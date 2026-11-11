@@ -7,8 +7,11 @@ import com.nullfuscator.obf.core.ObfMapping;
 import javax.imageio.ImageIO;
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
+import javax.swing.event.DocumentEvent;
+import javax.swing.event.DocumentListener;
 import javax.swing.filechooser.FileNameExtensionFilter;
 import javax.swing.tree.DefaultMutableTreeNode;
+import javax.swing.tree.DefaultTreeCellRenderer;
 import javax.swing.tree.DefaultTreeModel;
 import javax.swing.tree.TreeNode;
 import javax.swing.tree.TreePath;
@@ -27,6 +30,7 @@ import java.security.SecureRandom;
 import java.util.*;
 import java.util.List;
 import java.util.prefs.Preferences;
+import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
@@ -42,6 +46,7 @@ public final class NullfuscatorFrame extends JFrame {
     private static final String PREF_EXEMPT_MIXINS = "exempt_mixins";
     private static final String PREF_ALLOW_INCOMPLETE = "allow_incomplete";
     private static final String PREF_SEED = "seed";
+    private static final String PREF_SAVE_MAPPING = "save_mapping";
 
     private final Preferences prefs = Preferences.userNodeForPackage(NullfuscatorFrame.class);
 
@@ -57,10 +62,10 @@ public final class NullfuscatorFrame extends JFrame {
 
     private final JTextField seedField = new JTextField();
     private final JTextField customConfigField = new JTextField();
-    private final JCheckBox saveMappingCheck = new JCheckBox("Сохранять ProGuard mapping (.map)", true);
+    private final JCheckBox saveMappingCheck = new JCheckBox("Сохранять ProGuard mapping (.map)", false);
 
     private final JTree jarTree = new JTree(new DefaultMutableTreeNode("Перетащи JAR или выбери файл"));
-    private final JLabel jarTreeInfoLabel = new JLabel("Классы архива не загружены");
+    private final JLabel jarTreeInfoLabel = new JLabel("Файлы архива не загружены");
 
     private final JTextArea exemptionsArea = new JTextArea();
     private final JCheckBox exemptMixinsCheck = new JCheckBox("Исключать все миксины (*/mixin/*)", false);
@@ -395,67 +400,115 @@ public final class NullfuscatorFrame extends JFrame {
         root.add(topBar, BorderLayout.NORTH);
 
         jarTree.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
+        jarTree.setCellRenderer(new JarTreeCellRenderer());
         JScrollPane treeScroll = new JScrollPane(jarTree);
         root.add(treeScroll, BorderLayout.CENTER);
-
-        JPopupMenu treeMenu = new JPopupMenu();
-        JMenuItem excludeItem = new JMenuItem("🛡 Добавить в исключения");
-        excludeItem.addActionListener(e -> addSelectedTreeNodesToExemptions(false));
-        JMenuItem excludeAllItem = new JMenuItem("🛡 Исключить весь пакет (*)");
-        excludeAllItem.addActionListener(e -> addSelectedTreeNodesToExemptions(true));
-        JMenuItem copyItem = new JMenuItem("📋 Скопировать полное имя");
-        copyItem.addActionListener(e -> copySelectedTreeNodeName());
-
-        treeMenu.add(excludeItem);
-        treeMenu.add(excludeAllItem);
-        treeMenu.addSeparator();
-        treeMenu.add(copyItem);
 
         jarTree.addMouseListener(new java.awt.event.MouseAdapter() {
             @Override
             public void mousePressed(java.awt.event.MouseEvent e) {
-                if (SwingUtilities.isRightMouseButton(e)) {
+                handleTreePopup(e);
+            }
+
+            @Override
+            public void mouseReleased(java.awt.event.MouseEvent e) {
+                handleTreePopup(e);
+            }
+
+            private void handleTreePopup(java.awt.event.MouseEvent e) {
+                if (e.isPopupTrigger() || SwingUtilities.isRightMouseButton(e)) {
                     int row = jarTree.getClosestRowForLocation(e.getX(), e.getY());
                     if (row >= 0) {
                         jarTree.setSelectionRow(row);
-                        treeMenu.show(jarTree, e.getX(), e.getY());
+                        TreePath path = jarTree.getPathForRow(row);
+                        if (path != null) {
+                            DefaultMutableTreeNode node = (DefaultMutableTreeNode) path.getLastPathComponent();
+                            showJarTreeContextMenu(node, e.getX(), e.getY());
+                        }
                     }
                 }
             }
         });
 
-        JLabel footer = new JLabel("<html><font color='#a1a1aa'>💡 Кликни правой кнопкой мыши по классу или пакету, чтобы исключить его из обфускации.</font></html>");
+        JLabel footer = new JLabel("<html><font color='#a1a1aa'>💡 Кликни правой кнопкой мыши по классу или пакету, чтобы добавить или убрать исключение.</font></html>");
         root.add(footer, BorderLayout.SOUTH);
 
         return root;
     }
 
+    private void showJarTreeContextMenu(DefaultMutableTreeNode node, int x, int y) {
+        if (node == null || node == jarTree.getModel().getRoot()) {
+            return;
+        }
+
+        JPopupMenu menu = new JPopupMenu();
+        boolean exempt = isNodeExempted(node);
+
+        if (exempt) {
+            JMenuItem removeExemptItem = new JMenuItem("❌ Убрать из исключений");
+            removeExemptItem.setFont(safeFont(removeExemptItem.getFont(), Font.BOLD, 12f));
+            removeExemptItem.addActionListener(e -> removeNodeFromExemptions(node));
+            menu.add(removeExemptItem);
+        } else {
+            JMenuItem addExemptItem = new JMenuItem("🛡 Добавить в исключения");
+            addExemptItem.setFont(safeFont(addExemptItem.getFont(), Font.BOLD, 12f));
+            addExemptItem.addActionListener(e -> addSelectedTreeNodesToExemptions(false));
+            menu.add(addExemptItem);
+
+            String pkgLabel = node.isLeaf() ? "🛡 Исключить весь пакет (*)" : "🛡 Исключить всю папку (*)";
+            JMenuItem addPkgItem = new JMenuItem(pkgLabel);
+            addPkgItem.addActionListener(e -> addSelectedTreeNodesToExemptions(true));
+            menu.add(addPkgItem);
+        }
+
+        menu.addSeparator();
+
+        JMenuItem copyItem = new JMenuItem("📋 Скопировать полное имя");
+        copyItem.addActionListener(e -> copySelectedTreeNodeName());
+        menu.add(copyItem);
+
+        menu.show(jarTree, x, y);
+    }
+
     private void refreshJarTree(File jar) {
         if (jar == null || !jar.isFile()) {
             jarTree.setModel(new DefaultTreeModel(new DefaultMutableTreeNode("Файл не выбран")));
-            jarTreeInfoLabel.setText("Классы архива не загружены");
+            jarTreeInfoLabel.setText("Файлы архива не загружены");
             return;
         }
 
         DefaultMutableTreeNode root = new DefaultMutableTreeNode(jar.getName());
-        int count = 0;
+        int totalFiles = 0;
+        int totalClasses = 0;
 
         try (ZipFile z = new ZipFile(jar)) {
             Enumeration<? extends ZipEntry> entries = z.entries();
+            List<ZipEntry> entryList = new ArrayList<>();
+            while (entries.hasMoreElements()) {
+                entryList.add(entries.nextElement());
+            }
+            entryList.sort(Comparator.comparing(ZipEntry::getName));
+
             Map<String, DefaultMutableTreeNode> dirNodes = new HashMap<>();
 
-            List<String> classNames = new ArrayList<>();
-            while (entries.hasMoreElements()) {
-                ZipEntry entry = entries.nextElement();
-                String name = entry.getName();
-                if (name.endsWith(".class")) {
-                    classNames.add(name);
-                    count++;
+            for (ZipEntry entry : entryList) {
+                String rawName = entry.getName();
+                boolean isDir = entry.isDirectory() || rawName.endsWith("/");
+                String name = rawName;
+                if (name.endsWith("/")) {
+                    name = name.substring(0, name.length() - 1);
                 }
-            }
-            Collections.sort(classNames);
+                if (name.isEmpty()) {
+                    continue;
+                }
 
-            for (String name : classNames) {
+                if (!isDir) {
+                    totalFiles++;
+                    if (name.endsWith(".class")) {
+                        totalClasses++;
+                    }
+                }
+
                 String[] parts = name.split("/");
                 DefaultMutableTreeNode current = root;
                 String currentPath = "";
@@ -463,9 +516,9 @@ public final class NullfuscatorFrame extends JFrame {
                 for (int i = 0; i < parts.length; i++) {
                     String part = parts[i];
                     currentPath = currentPath.isEmpty() ? part : currentPath + "/" + part;
-                    if (i == parts.length - 1) {
-                        current.add(new DefaultMutableTreeNode(part));
-                    } else {
+                    boolean partIsDir = isDir || (i < parts.length - 1);
+
+                    if (partIsDir) {
                         DefaultMutableTreeNode dirNode = dirNodes.get(currentPath);
                         if (dirNode == null) {
                             dirNode = new DefaultMutableTreeNode(part);
@@ -473,17 +526,233 @@ public final class NullfuscatorFrame extends JFrame {
                             current.add(dirNode);
                         }
                         current = dirNode;
+                    } else {
+                        boolean exists = false;
+                        for (int c = 0; c < current.getChildCount(); c++) {
+                            if (current.getChildAt(c).toString().equals(part)) {
+                                exists = true;
+                                break;
+                            }
+                        }
+                        if (!exists) {
+                            current.add(new DefaultMutableTreeNode(part));
+                        }
                     }
                 }
             }
+
             jarTree.setModel(new DefaultTreeModel(root));
-            jarTreeInfoLabel.setText("В архиве обнаружено " + count + " классов. Путь: " + jar.getName());
-            for (int i = 0; i < Math.min(jarTree.getRowCount(), 25); i++) {
+            jarTreeInfoLabel.setText("В архиве: " + totalFiles + " файлов (" + totalClasses + " классов). JAR: " + jar.getName());
+            for (int i = 0; i < Math.min(jarTree.getRowCount(), 30); i++) {
                 jarTree.expandRow(i);
             }
         } catch (Exception e) {
             jarTree.setModel(new DefaultTreeModel(new DefaultMutableTreeNode("Ошибка чтения: " + e.getMessage())));
             jarTreeInfoLabel.setText("Ошибка чтения JAR: " + e.getMessage());
+        }
+    }
+
+    private boolean isNodeExempted(DefaultMutableTreeNode node) {
+        if (node == null || node == jarTree.getModel().getRoot()) {
+            return false;
+        }
+
+        List<String> segs = getNodeSegments(node);
+        if (segs.isEmpty()) {
+            return false;
+        }
+
+        String slashPath = String.join("/", segs);
+
+        if (exemptMixinsCheck.isSelected()) {
+            String lower = slashPath.toLowerCase();
+            if (lower.contains("/mixin/") || lower.contains("/mixins/") || lower.startsWith("mixin/") || lower.startsWith("mixins/")) {
+                return true;
+            }
+        }
+
+        String raw = exemptionsArea.getText();
+        if (raw == null || raw.isBlank()) {
+            return false;
+        }
+
+        for (String line : raw.split("\n")) {
+            String trimmed = line.trim();
+            if (trimmed.isEmpty() || trimmed.startsWith("#")) {
+                continue;
+            }
+            if (matchesExemptionPattern(node, trimmed)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private boolean matchesExemptionPattern(DefaultMutableTreeNode node, String pattern) {
+        if (node == null || pattern == null || pattern.isEmpty()) {
+            return false;
+        }
+
+        List<String> segs = getNodeSegments(node);
+        if (segs.isEmpty()) {
+            return false;
+        }
+
+        String slashPath = String.join("/", segs);
+        boolean isClass = node.isLeaf() && segs.get(segs.size() - 1).endsWith(".class");
+        String classSlash = isClass ? slashPath.substring(0, slashPath.length() - 6) : "";
+        String classDot = isClass ? classSlash.replace('/', '.') : "";
+        String dirSlash = slashPath;
+        String dirDot = slashPath.replace('/', '.');
+
+        if (pattern.startsWith("\"") && pattern.endsWith("\"") && pattern.length() >= 2) {
+            pattern = pattern.substring(1, pattern.length() - 1);
+        }
+
+        if (pattern.startsWith("class{") && pattern.endsWith("}")) {
+            String rx = pattern.substring(6, pattern.length() - 1);
+            try {
+                Pattern p = Pattern.compile(rx);
+                if (isClass) {
+                    return p.matcher(classSlash).find() || p.matcher(slashPath).find();
+                } else {
+                    return p.matcher(slashPath + "/").find() || p.matcher(slashPath).find();
+                }
+            } catch (Exception ignored) {
+                return false;
+            }
+        }
+
+        String pSlash = pattern.replace('.', '/').trim();
+        String pDot = pattern.replace('/', '.').trim();
+
+        if (pSlash.endsWith("/*") || pDot.endsWith(".*")) {
+            String prefixSlash = pSlash.substring(0, pSlash.length() - 1);
+            String prefixDot = pDot.substring(0, pDot.length() - 1);
+
+            if (isClass) {
+                if (classSlash.startsWith(prefixSlash) || (classDot + ".").startsWith(prefixDot)) {
+                    return true;
+                }
+            } else if (node.isLeaf()) {
+                if (slashPath.startsWith(prefixSlash)) {
+                    return true;
+                }
+            } else {
+                if ((slashPath + "/").startsWith(prefixSlash) || (dirDot + ".").startsWith(prefixDot) || prefixSlash.startsWith(slashPath + "/")) {
+                    return true;
+                }
+            }
+        }
+
+        if (isClass) {
+            if (classDot.equalsIgnoreCase(pattern) || classSlash.equalsIgnoreCase(pSlash) || slashPath.equalsIgnoreCase(pattern)) {
+                return true;
+            }
+            if (pSlash.endsWith("/") && classSlash.startsWith(pSlash)) {
+                return true;
+            }
+            if (classSlash.startsWith(pSlash + "/")) {
+                return true;
+            }
+        } else if (node.isLeaf()) {
+            if (slashPath.equalsIgnoreCase(pattern) || slashPath.equalsIgnoreCase(pSlash)) {
+                return true;
+            }
+            if (pSlash.endsWith("/") && slashPath.startsWith(pSlash)) {
+                return true;
+            }
+            if (slashPath.startsWith(pSlash + "/")) {
+                return true;
+            }
+        } else {
+            if (dirDot.equalsIgnoreCase(pDot) || dirSlash.equalsIgnoreCase(pSlash)) {
+                return true;
+            }
+            if (pSlash.equals(dirSlash + "/*") || pDot.equals(dirDot + ".*") || pSlash.equals(dirSlash + "/")) {
+                return true;
+            }
+            if ((dirSlash + "/").startsWith(pSlash.endsWith("/") ? pSlash : pSlash + "/")) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private boolean isExactMatch(DefaultMutableTreeNode node, String pattern) {
+        if (pattern.startsWith("\"") && pattern.endsWith("\"") && pattern.length() >= 2) {
+            pattern = pattern.substring(1, pattern.length() - 1);
+        }
+        List<String> segs = getNodeSegments(node);
+        if (segs.isEmpty()) {
+            return false;
+        }
+        String slashPath = String.join("/", segs);
+        boolean isClass = node.isLeaf() && segs.get(segs.size() - 1).endsWith(".class");
+        if (isClass) {
+            String classSlash = slashPath.substring(0, slashPath.length() - 6);
+            String classDot = classSlash.replace('/', '.');
+            return classDot.equalsIgnoreCase(pattern) || classSlash.equalsIgnoreCase(pattern);
+        }
+        if (node.isLeaf()) {
+            return slashPath.equalsIgnoreCase(pattern);
+        }
+        String dirSlash = slashPath;
+        String dirDot = slashPath.replace('/', '.');
+        return dirDot.equalsIgnoreCase(pattern) || dirSlash.equalsIgnoreCase(pattern)
+                || (dirDot + ".*").equalsIgnoreCase(pattern) || (dirSlash + "/*").equalsIgnoreCase(pattern);
+    }
+
+    private void removeNodeFromExemptions(DefaultMutableTreeNode node) {
+        if (node == null || node == jarTree.getModel().getRoot()) {
+            return;
+        }
+
+        String current = exemptionsArea.getText();
+        if (current == null || current.isBlank()) {
+            return;
+        }
+
+        String[] lines = current.split("\n");
+        List<String> remaining = new ArrayList<>();
+        String removed = null;
+
+        boolean hasExact = false;
+        for (String line : lines) {
+            String trimmed = line.trim();
+            if (isExactMatch(node, trimmed)) {
+                hasExact = true;
+                break;
+            }
+        }
+
+        for (String line : lines) {
+            String trimmed = line.trim();
+            if (trimmed.isEmpty() || trimmed.startsWith("#")) {
+                remaining.add(line);
+                continue;
+            }
+
+            boolean shouldRemove;
+            if (hasExact) {
+                shouldRemove = isExactMatch(node, trimmed);
+            } else {
+                shouldRemove = matchesExemptionPattern(node, trimmed);
+            }
+
+            if (shouldRemove) {
+                removed = trimmed;
+            } else {
+                remaining.add(line);
+            }
+        }
+
+        if (removed != null) {
+            exemptionsArea.setText(String.join("\n", remaining));
+            log("[-] Удалено из исключений: " + removed);
+            jarTree.repaint();
         }
     }
 
@@ -494,29 +763,69 @@ public final class NullfuscatorFrame extends JFrame {
         }
 
         DefaultMutableTreeNode node = (DefaultMutableTreeNode) path.getLastPathComponent();
-        String full = getNodeFullPath(node);
-        if (full.isEmpty()) {
+        if (node == jarTree.getModel().getRoot()) {
             return;
         }
 
-        if (entirePackage && !full.endsWith(".*")) {
-            if (node.isLeaf() && full.contains(".")) {
-                full = full.substring(0, full.lastIndexOf('.')) + ".*";
+        String target;
+        List<String> segs = getNodeSegments(node);
+        if (segs.isEmpty()) {
+            return;
+        }
+
+        boolean isClass = node.isLeaf() && segs.get(segs.size() - 1).endsWith(".class");
+
+        if (entirePackage) {
+            if (node.isLeaf()) {
+                if (segs.size() > 1) {
+                    if (isClass) {
+                        List<String> pkgSegs = new ArrayList<>(segs.subList(0, segs.size() - 1));
+                        target = String.join(".", pkgSegs) + ".*";
+                    } else {
+                        List<String> dirSegs = new ArrayList<>(segs.subList(0, segs.size() - 1));
+                        target = String.join("/", dirSegs) + "/*";
+                    }
+                } else {
+                    target = isClass ? ".*" : "/*";
+                }
             } else {
-                full = full + ".*";
+                String full = getNodeFullPath(node);
+                if (full.contains("/")) {
+                    target = full.endsWith("/*") ? full : full + "/*";
+                } else {
+                    target = full.endsWith(".*") ? full : full + ".*";
+                }
             }
+        } else {
+            target = getNodeFullPath(node);
+        }
+
+        if (target.isEmpty()) {
+            return;
         }
 
         String current = exemptionsArea.getText().trim();
-        if (!current.contains(full)) {
+        if (!containsExemption(current, target)) {
             if (!current.isEmpty()) {
                 current += "\n";
             }
-            current += full;
+            current += target;
             exemptionsArea.setText(current);
-            log("[+] Добавлено в исключения: " + full);
-            JOptionPane.showMessageDialog(this, "Добавлено в список исключений:\n" + full, "Исключение добавлено", JOptionPane.INFORMATION_MESSAGE);
+            log("[+] Добавлено в исключения: " + target);
+            jarTree.repaint();
         }
+    }
+
+    private boolean containsExemption(String text, String target) {
+        if (text == null || text.isBlank()) {
+            return false;
+        }
+        for (String line : text.split("\n")) {
+            if (line.trim().equalsIgnoreCase(target.trim())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private void copySelectedTreeNodeName() {
@@ -528,20 +837,108 @@ public final class NullfuscatorFrame extends JFrame {
         }
     }
 
-    private String getNodeFullPath(DefaultMutableTreeNode node) {
+    private List<String> getNodeSegments(DefaultMutableTreeNode node) {
         TreeNode[] path = node.getPath();
-        StringBuilder sb = new StringBuilder();
+        List<String> segs = new ArrayList<>();
         for (int i = 1; i < path.length; i++) {
-            if (sb.length() > 0) {
-                sb.append(".");
+            segs.add(path[i].toString());
+        }
+        return segs;
+    }
+
+    private String getNodeSlashPath(DefaultMutableTreeNode node) {
+        List<String> segs = getNodeSegments(node);
+        return String.join("/", segs);
+    }
+
+    private String getNodeDotPath(DefaultMutableTreeNode node) {
+        List<String> segs = new ArrayList<>(getNodeSegments(node));
+        if (segs.isEmpty()) {
+            return "";
+        }
+        String last = segs.get(segs.size() - 1);
+        if (last.endsWith(".class")) {
+            segs.set(segs.size() - 1, last.substring(0, last.length() - 6));
+        }
+        return String.join(".", segs);
+    }
+
+    private String getNodeFullPath(DefaultMutableTreeNode node) {
+        List<String> segs = getNodeSegments(node);
+        if (segs.isEmpty()) {
+            return "";
+        }
+        String last = segs.get(segs.size() - 1);
+        if (last.endsWith(".class")) {
+            return getNodeDotPath(node);
+        }
+        if (node.isLeaf()) {
+            return getNodeSlashPath(node);
+        }
+        String top = segs.get(0);
+        if (top.equals("assets") || top.equals("data") || top.equals("META-INF")) {
+            return getNodeSlashPath(node);
+        }
+        return getNodeDotPath(node);
+    }
+
+    private final class JarTreeCellRenderer extends DefaultTreeCellRenderer {
+        private boolean isCurrentExempt;
+        private final Color defaultSelBg = getBackgroundSelectionColor();
+        private final Color defaultNonSelBg = getBackgroundNonSelectionColor();
+        private final Color defaultSelFg = getTextSelectionColor();
+        private final Color defaultNonSelFg = getTextNonSelectionColor();
+
+        @Override
+        public Component getTreeCellRendererComponent(JTree tree, Object value, boolean sel,
+                                                      boolean expanded, boolean leaf, int row, boolean hasFocus) {
+            super.getTreeCellRendererComponent(tree, value, sel, expanded, leaf, row, hasFocus);
+
+            isCurrentExempt = false;
+            if (value instanceof DefaultMutableTreeNode node && node != tree.getModel().getRoot()) {
+                isCurrentExempt = isNodeExempted(node);
             }
-            sb.append(path[i].toString());
+
+            if (isCurrentExempt) {
+                Color bg = sel ? new Color(155, 34, 34) : new Color(92, 22, 22);
+                setBackgroundSelectionColor(bg);
+                setBackgroundNonSelectionColor(bg);
+                setTextSelectionColor(Color.WHITE);
+                setTextNonSelectionColor(new Color(254, 202, 202));
+                setForeground(sel ? Color.WHITE : new Color(254, 202, 202));
+                setOpaque(true);
+                setBackground(bg);
+            } else {
+                setBackgroundSelectionColor(defaultSelBg);
+                setBackgroundNonSelectionColor(defaultNonSelBg);
+                setTextSelectionColor(defaultSelFg);
+                setTextNonSelectionColor(defaultNonSelFg);
+                setOpaque(false);
+                if (defaultNonSelBg != null) {
+                    setBackground(sel ? defaultSelBg : defaultNonSelBg);
+                }
+                if (defaultNonSelFg != null) {
+                    setForeground(sel ? defaultSelFg : defaultNonSelFg);
+                }
+            }
+
+            return this;
         }
-        String res = sb.toString();
-        if (res.endsWith(".class")) {
-            res = res.substring(0, res.length() - 6);
+
+        @Override
+        public void paint(Graphics g) {
+            if (isCurrentExempt) {
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                Color bg = selected ? new Color(155, 34, 34) : new Color(92, 22, 22);
+                g2.setColor(bg);
+                g2.fillRoundRect(0, 0, getWidth(), getHeight(), 4, 4);
+                g2.setColor(new Color(239, 68, 68, 160));
+                g2.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, 4, 4);
+                g2.dispose();
+            }
+            super.paint(g);
         }
-        return res;
     }
 
     private JPanel createExemptionsPanel() {
@@ -564,6 +961,13 @@ public final class NullfuscatorFrame extends JFrame {
         exemptionsArea.setToolTipText("Примеры:\nru.myproject.gui\ndev.ranked.ac.security.*\ncom.example.api.PublicClass");
         JScrollPane scroll = new JScrollPane(exemptionsArea);
         customPanel.add(scroll, BorderLayout.CENTER);
+
+        exemptMixinsCheck.addActionListener(e -> jarTree.repaint());
+        exemptionsArea.getDocument().addDocumentListener(new DocumentListener() {
+            public void insertUpdate(DocumentEvent e) { jarTree.repaint(); }
+            public void removeUpdate(DocumentEvent e) { jarTree.repaint(); }
+            public void changedUpdate(DocumentEvent e) { jarTree.repaint(); }
+        });
 
         JLabel hintLabel = new JLabel("<html><font color='#a1a1aa'>Укажи пакеты или классы без обфускации. Например: <code>com.mycompany.api.*</code> или <code>ru.project.config.MyConfig</code></font></html>");
         customPanel.add(hintLabel, BorderLayout.SOUTH);
@@ -1296,6 +1700,7 @@ public final class NullfuscatorFrame extends JFrame {
             prefs.putBoolean(PREF_KEEP_SIGNATURES, keepSignaturesCheck.isSelected());
             prefs.putBoolean(PREF_EXEMPT_MIXINS, exemptMixinsCheck.isSelected());
             prefs.putBoolean(PREF_ALLOW_INCOMPLETE, allowIncompleteClasspathCheck.isSelected());
+            prefs.putBoolean(PREF_SAVE_MAPPING, saveMappingCheck.isSelected());
 
             List<String> libs = new ArrayList<>();
             for (int i = 0; i < libsModel.size(); i++) {
@@ -1324,6 +1729,7 @@ public final class NullfuscatorFrame extends JFrame {
             keepSignaturesCheck.setSelected(prefs.getBoolean(PREF_KEEP_SIGNATURES, false));
             exemptMixinsCheck.setSelected(prefs.getBoolean(PREF_EXEMPT_MIXINS, false));
             allowIncompleteClasspathCheck.setSelected(prefs.getBoolean(PREF_ALLOW_INCOMPLETE, true));
+            saveMappingCheck.setSelected(prefs.getBoolean(PREF_SAVE_MAPPING, false));
 
             String libsStr = prefs.get(PREF_LIBS, "");
             if (!libsStr.isEmpty()) {
