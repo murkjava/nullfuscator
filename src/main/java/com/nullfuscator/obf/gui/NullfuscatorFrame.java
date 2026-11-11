@@ -94,6 +94,7 @@ public final class NullfuscatorFrame extends JFrame {
     private final JSpinner antiAiLevelSpinner = new JSpinner(new SpinnerNumberModel(3, 1, 3, 1));
     private final JSpinner antiAiConstPercentSpinner = new JSpinner(new SpinnerNumberModel(85, 0, 100, 5));
     private final JSpinner antiAiDecoySpinner = new JSpinner(new SpinnerNumberModel(8, 0, 32, 2));
+    private final JSpinner antiAiBranchPercentSpinner = new JSpinner(new SpinnerNumberModel(30, 0, 100, 5));
 
     private final JCheckBox antiDecompilerCheck = new JCheckBox("Защита от декомпиляторов (Anti-Decompiler)", true);
     private final JSpinner antiDecompilerLevelSpinner = new JSpinner(new SpinnerNumberModel(3, 1, 3, 1));
@@ -1507,12 +1508,15 @@ public final class NullfuscatorFrame extends JFrame {
         JPanel aiLvlRow = createLevelRow("Уровень защиты (level 1-3):", antiAiLevelSpinner, 1, 3, "ур.");
         JPanel aiConstRow = createPercentRow("Процент кодирования констант:", antiAiConstPercentSpinner, 0, 100);
         JPanel aiDecoyRow = createNumberRow("Количество ложных методов-приманок:", antiAiDecoySpinner, "шт.");
+        JPanel aiBranchRow = createPercentRow("Ложные ветвления (decoy branches):", antiAiBranchPercentSpinner, 0, 100);
         aiCard.add(aiLvlRow);
         aiCard.add(Box.createVerticalStrut(4));
         aiCard.add(aiConstRow);
         aiCard.add(Box.createVerticalStrut(4));
         aiCard.add(aiDecoyRow);
-        bindToggle(antiAiCheck, aiLvlRow, aiConstRow, aiDecoyRow);
+        aiCard.add(Box.createVerticalStrut(4));
+        aiCard.add(aiBranchRow);
+        bindToggle(antiAiCheck, aiLvlRow, aiConstRow, aiDecoyRow, aiBranchRow);
         content.add(aiCard);
         content.add(Box.createVerticalStrut(12));
 
@@ -2180,6 +2184,7 @@ public final class NullfuscatorFrame extends JFrame {
                 antiAiLevelSpinner.setValue(1);
                 antiAiConstPercentSpinner.setValue(20);
                 antiAiDecoySpinner.setValue(2);
+                antiAiBranchPercentSpinner.setValue(15);
 
                 antiDecompilerCheck.setSelected(false);
                 antiDecompilerLevelSpinner.setValue(1);
@@ -2304,6 +2309,7 @@ public final class NullfuscatorFrame extends JFrame {
                 antiAiLevelSpinner.setValue(1);
                 antiAiConstPercentSpinner.setValue(35);
                 antiAiDecoySpinner.setValue(3);
+                antiAiBranchPercentSpinner.setValue(30);
 
                 antiDecompilerCheck.setSelected(false);
                 antiDecompilerLevelSpinner.setValue(1);
@@ -2411,6 +2417,7 @@ public final class NullfuscatorFrame extends JFrame {
                 antiAiLevelSpinner.setValue(2);
                 antiAiConstPercentSpinner.setValue(35);
                 antiAiDecoySpinner.setValue(3);
+                antiAiBranchPercentSpinner.setValue(30);
 
                 antiDecompilerCheck.setSelected(true);
                 antiDecompilerLevelSpinner.setValue(3);
@@ -2540,6 +2547,7 @@ public final class NullfuscatorFrame extends JFrame {
                 antiAiLevelSpinner.setValue(3);
                 antiAiConstPercentSpinner.setValue(85);
                 antiAiDecoySpinner.setValue(8);
+                antiAiBranchPercentSpinner.setValue(45);
 
                 antiDecompilerCheck.setSelected(true);
                 antiDecompilerLevelSpinner.setValue(3);
@@ -2848,6 +2856,7 @@ public final class NullfuscatorFrame extends JFrame {
         sb.append("  level: ").append(antiAiLevelSpinner.getValue()).append("\n");
         sb.append("  decoyMethods: ").append(antiAiDecoySpinner.getValue()).append("\n");
         sb.append("  constantEncodingPercent: ").append(antiAiConstPercentSpinner.getValue()).append("\n");
+        sb.append("  decoyBranchPercent: ").append(antiAiBranchPercentSpinner.getValue()).append("\n");
         sb.append("}\n\n");
 
         sb.append("antiDecompiler {\n");
@@ -3440,6 +3449,7 @@ public final class NullfuscatorFrame extends JFrame {
             putSpinner("anti_ai_level", antiAiLevelSpinner);
             putSpinner("anti_ai_const_pct", antiAiConstPercentSpinner);
             putSpinner("anti_ai_decoys", antiAiDecoySpinner);
+            putSpinner("anti_ai_branch_pct", antiAiBranchPercentSpinner);
 
             prefs.putBoolean("anti_decomp_enabled", antiDecompilerCheck.isSelected());
             putSpinner("anti_decomp_level", antiDecompilerLevelSpinner);
@@ -3606,6 +3616,7 @@ public final class NullfuscatorFrame extends JFrame {
             getSpinner("anti_ai_level", antiAiLevelSpinner);
             getSpinner("anti_ai_const_pct", antiAiConstPercentSpinner);
             getSpinner("anti_ai_decoys", antiAiDecoySpinner);
+            getSpinner("anti_ai_branch_pct", antiAiBranchPercentSpinner);
 
             antiDecompilerCheck.setSelected(prefs.getBoolean("anti_decomp_enabled", antiDecompilerCheck.isSelected()));
             getSpinner("anti_decomp_level", antiDecompilerLevelSpinner);
