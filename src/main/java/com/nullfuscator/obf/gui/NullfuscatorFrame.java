@@ -1088,6 +1088,8 @@ public final class NullfuscatorFrame extends JFrame {
     private JCheckBox makeMasterCheck(JCheckBox cb) {
         cb.setFont(safeFont(cb.getFont(), Font.BOLD, 13.5f));
         cb.setForeground(new Color(250, 250, 250));
+        cb.setAlignmentX(Component.LEFT_ALIGNMENT);
+        cb.setMaximumSize(new Dimension(Integer.MAX_VALUE, cb.getPreferredSize().height));
         return cb;
     }
 
@@ -1096,6 +1098,7 @@ public final class NullfuscatorFrame extends JFrame {
         s.setForeground(new Color(55, 58, 66));
         s.setBackground(new Color(36, 38, 44));
         s.setMaximumSize(new Dimension(Integer.MAX_VALUE, 2));
+        s.setAlignmentX(Component.LEFT_ALIGNMENT);
         return s;
     }
 
@@ -1117,6 +1120,7 @@ public final class NullfuscatorFrame extends JFrame {
         JPanel row = new JPanel(new BorderLayout(12, 0));
         row.setOpaque(false);
         row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 36));
+        row.setAlignmentX(Component.LEFT_ALIGNMENT);
 
         JLabel lbl = new JLabel(label);
         lbl.setFont(safeFont(null, Font.PLAIN, 13.5f));
@@ -1133,6 +1137,7 @@ public final class NullfuscatorFrame extends JFrame {
         JPanel row = new JPanel(new BorderLayout(12, 0));
         row.setOpaque(false);
         row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 36));
+        row.setAlignmentX(Component.LEFT_ALIGNMENT);
 
         JLabel lbl = new JLabel(label);
         lbl.setFont(safeFont(null, Font.PLAIN, 13.5f));
@@ -1159,6 +1164,7 @@ public final class NullfuscatorFrame extends JFrame {
         JPanel row = new JPanel(new BorderLayout(12, 0));
         row.setOpaque(false);
         row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 36));
+        row.setAlignmentX(Component.LEFT_ALIGNMENT);
 
         JLabel lbl = new JLabel(label);
         lbl.setFont(safeFont(null, Font.PLAIN, 13.5f));
@@ -1211,6 +1217,7 @@ public final class NullfuscatorFrame extends JFrame {
         JPanel row = new JPanel(new BorderLayout(12, 0));
         row.setOpaque(false);
         row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 36));
+        row.setAlignmentX(Component.LEFT_ALIGNMENT);
 
         JLabel lbl = new JLabel(label);
         lbl.setFont(safeFont(null, Font.PLAIN, 13.5f));
@@ -1291,6 +1298,42 @@ public final class NullfuscatorFrame extends JFrame {
         }
     }
 
+    private static class ScrollableBoxPanel extends JPanel implements Scrollable {
+        ScrollableBoxPanel() {
+            setLayout(new BoxLayout(this, BoxLayout.Y_AXIS));
+            setBorder(new EmptyBorder(8, 8, 8, 8));
+        }
+
+        @Override
+        public Dimension getPreferredScrollableViewportSize() {
+            return getPreferredSize();
+        }
+
+        @Override
+        public int getScrollableUnitIncrement(Rectangle visibleRect, int orientation, int direction) {
+            return 16;
+        }
+
+        @Override
+        public int getScrollableBlockIncrement(Rectangle visibleRect, int orientation, int direction) {
+            return 64;
+        }
+
+        @Override
+        public boolean getScrollableTracksViewportWidth() {
+            return true;
+        }
+
+        @Override
+        public boolean getScrollableTracksViewportHeight() {
+            return false;
+        }
+    }
+
+    private JPanel createTabContent() {
+        return new ScrollableBoxPanel();
+    }
+
     private JScrollPane wrapInScroll(JPanel content) {
         JScrollPane scroll = new JScrollPane(content);
         scroll.setBorder(null);
@@ -1348,8 +1391,7 @@ public final class NullfuscatorFrame extends JFrame {
         JPanel root = new JPanel(new BorderLayout(10, 10));
         root.setBorder(new EmptyBorder(14, 14, 14, 14));
 
-        JPanel content = new JPanel();
-        content.setLayout(new BoxLayout(content, BoxLayout.Y_AXIS));
+        JPanel content = createTabContent();
 
         JPanel jarCard = createSectionPanel("Бюджет роста размера JAR (Jar Growth Budget)");
         jarCard.setLayout(new BoxLayout(jarCard, BoxLayout.Y_AXIS));
@@ -1443,20 +1485,18 @@ public final class NullfuscatorFrame extends JFrame {
 
         JTabbedPane subTabs = new JTabbedPane();
         subTabs.setFont(safeFont(subTabs.getFont(), Font.BOLD, 13f));
-        subTabs.addTab("🛡 Анализ и защита", createAnalysisAndSecurityTab());
-        subTabs.addTab("🔀 Поток выполнения", createControlFlowTab());
-        subTabs.addTab("🔐 Шифрование и ссылки", createEncryptionTab());
-        subTabs.addTab("🌐 Распыление и семантика", createDispersionTab());
-        subTabs.addTab("🏷 Имена и метаданные", createRenamingTab());
+        subTabs.addTab("Анализ и защита", createAnalysisAndSecurityTab());
+        subTabs.addTab("Поток выполнения", createControlFlowTab());
+        subTabs.addTab("Шифрование и ссылки", createEncryptionTab());
+        subTabs.addTab("Распыление и семантика", createDispersionTab());
+        subTabs.addTab("Имена и метаданные", createRenamingTab());
 
         root.add(subTabs, BorderLayout.CENTER);
         return root;
     }
 
     private JComponent createAnalysisAndSecurityTab() {
-        JPanel content = new JPanel();
-        content.setLayout(new BoxLayout(content, BoxLayout.Y_AXIS));
-        content.setBorder(new EmptyBorder(8, 8, 8, 8));
+        JPanel content = createTabContent();
 
         JPanel aiCard = createSectionPanel("Защита от искусственного интеллекта (Anti-AI)");
         aiCard.setLayout(new BoxLayout(aiCard, BoxLayout.Y_AXIS));
@@ -1544,9 +1584,7 @@ public final class NullfuscatorFrame extends JFrame {
     }
 
     private JComponent createControlFlowTab() {
-        JPanel content = new JPanel();
-        content.setLayout(new BoxLayout(content, BoxLayout.Y_AXIS));
-        content.setBorder(new EmptyBorder(8, 8, 8, 8));
+        JPanel content = createTabContent();
 
         JPanel flatCard = createSectionPanel("Сглаживание потока (Control Flow Flattening)");
         flatCard.setLayout(new BoxLayout(flatCard, BoxLayout.Y_AXIS));
@@ -1601,9 +1639,7 @@ public final class NullfuscatorFrame extends JFrame {
     }
 
     private JComponent createEncryptionTab() {
-        JPanel content = new JPanel();
-        content.setLayout(new BoxLayout(content, BoxLayout.Y_AXIS));
-        content.setBorder(new EmptyBorder(8, 8, 8, 8));
+        JPanel content = createTabContent();
 
         JPanel strCard = createSectionPanel("Шифрование строк (String Encryption)");
         strCard.setLayout(new BoxLayout(strCard, BoxLayout.Y_AXIS));
@@ -1671,9 +1707,7 @@ public final class NullfuscatorFrame extends JFrame {
     }
 
     private JComponent createDispersionTab() {
-        JPanel content = new JPanel();
-        content.setLayout(new BoxLayout(content, BoxLayout.Y_AXIS));
-        content.setBorder(new EmptyBorder(8, 8, 8, 8));
+        JPanel content = createTabContent();
 
         JPanel dispCard = createSectionPanel("Межклассовое распыление (Cross-Class Dispersion)");
         dispCard.setLayout(new BoxLayout(dispCard, BoxLayout.Y_AXIS));
@@ -1784,9 +1818,7 @@ public final class NullfuscatorFrame extends JFrame {
     }
 
     private JComponent createRenamingTab() {
-        JPanel content = new JPanel();
-        content.setLayout(new BoxLayout(content, BoxLayout.Y_AXIS));
-        content.setBorder(new EmptyBorder(8, 8, 8, 8));
+        JPanel content = createTabContent();
 
         JPanel clsCard = createSectionPanel("Переименование классов (Class Renamer)");
         clsCard.setLayout(new BoxLayout(clsCard, BoxLayout.Y_AXIS));
@@ -3287,9 +3319,24 @@ public final class NullfuscatorFrame extends JFrame {
     }
 
     private JPanel createSectionPanel(String title) {
-        JPanel p = new JPanel();
+        JPanel p = new JPanel() {
+            @Override
+            public Dimension getMaximumSize() {
+                Dimension pref = getPreferredSize();
+                return new Dimension(Integer.MAX_VALUE, pref.height);
+            }
+
+            @Override
+            protected void addImpl(Component comp, Object constraints, int index) {
+                if (comp instanceof JComponent jc) {
+                    jc.setAlignmentX(Component.LEFT_ALIGNMENT);
+                }
+                super.addImpl(comp, constraints, index);
+            }
+        };
         p.setBackground(new Color(36, 37, 43));
         p.setBorder(createTitledBorder(title));
+        p.setAlignmentX(Component.LEFT_ALIGNMENT);
         return p;
     }
 
