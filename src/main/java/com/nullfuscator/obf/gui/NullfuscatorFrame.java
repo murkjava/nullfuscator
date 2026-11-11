@@ -73,18 +73,143 @@ public final class NullfuscatorFrame extends JFrame {
     private final JCheckBox keepVirtualMethodsCheck = new JCheckBox("Не переименовывать виртуальные методы", false);
     private final JCheckBox keepSignaturesCheck = new JCheckBox("Сохранять сигнатуры дженериков (для Gson/Jackson)", false);
     private final JCheckBox allowIncompleteClasspathCheck = new JCheckBox("Разрешить неполный класспас (Allow Incomplete Classpath)", true);
+    private final JCheckBox allowMultiReleaseCheck = new JCheckBox("Разрешить переименование Multi-Release (allowMultiReleaseRename)", true);
+    private final JTextArea hotPathsArea = new JTextArea();
 
-    private final JCheckBox stringEncCheck = new JCheckBox("Шифрование строк (Polymorphic Strings)", true);
-    private final JCheckBox numberEncCheck = new JCheckBox("Шифрование чисел (Number Math)", true);
-    private final JCheckBox flowFlattenCheck = new JCheckBox("Сглаживание потока управления (Control Flow)", true);
+    private final JCheckBox budgetsEnabledCheck = new JCheckBox("Включить контроль бюджетов роста (Budgets Policy)", true);
+    private final JSpinner maxJarGrowthPercentSpinner = new JSpinner(new SpinnerNumberModel(120, -1, 1000, 5));
+    private final JSpinner jarGrowthBytesSpinner = new JSpinner(new SpinnerNumberModel(65536, 0, 100_000_000, 1024));
+    private final JSpinner maxClassGrowthPercentSpinner = new JSpinner(new SpinnerNumberModel(10, -1, 1000, 1));
+    private final JSpinner classGrowthAllowanceSpinner = new JSpinner(new SpinnerNumberModel(4, 0, 10000, 1));
+    private final JSpinner maxMethodGrowthPercentSpinner = new JSpinner(new SpinnerNumberModel(35, -1, 1000, 5));
+    private final JSpinner methodGrowthAllowanceSpinner = new JSpinner(new SpinnerNumberModel(64, 0, 10000, 8));
+    private final JSpinner maxInstructionGrowthPercentSpinner = new JSpinner(new SpinnerNumberModel(150, -1, 1000, 10));
+    private final JSpinner instructionGrowthAllowanceSpinner = new JSpinner(new SpinnerNumberModel(1024, 0, 100000, 64));
+
+    private final JCheckBox coverageEnabledCheck = new JCheckBox("Требовать минимальное покрытие защиты (Coverage)", false);
+    private final JSpinner coverageMinPercentSpinner = new JSpinner(new SpinnerNumberModel(1, 1, 100, 1));
+    private final JTextField coverageRequiredField = new JTextField();
+
+    private final JCheckBox antiAiCheck = new JCheckBox("Защита от анализа ИИ (Anti-AI)", true);
+    private final JSpinner antiAiLevelSpinner = new JSpinner(new SpinnerNumberModel(3, 1, 3, 1));
+    private final JSpinner antiAiConstPercentSpinner = new JSpinner(new SpinnerNumberModel(85, 0, 100, 5));
+    private final JSpinner antiAiDecoySpinner = new JSpinner(new SpinnerNumberModel(8, 0, 32, 2));
+
     private final JCheckBox antiDecompilerCheck = new JCheckBox("Защита от декомпиляторов (Anti-Decompiler)", true);
+    private final JSpinner antiDecompilerLevelSpinner = new JSpinner(new SpinnerNumberModel(3, 1, 3, 1));
+
     private final JCheckBox antiDeobfCheck = new JCheckBox("Защита от деобфускаторов (Anti-Deobf AST)", true);
-    private final JCheckBox antiAiCheck = new JCheckBox("Защита от анализа нейросетями (Anti-AI)", true);
+    private final JSpinner antiDeobfLevelSpinner = new JSpinner(new SpinnerNumberModel(3, 1, 3, 1));
+    private final JCheckBox antiDeobfBadSigCheck = new JCheckBox("Испорченные сигнатуры методов/полей (badSignatures)", true);
+    private final JCheckBox antiDeobfBadClassSigCheck = new JCheckBox("Испорченные сигнатуры классов (badRealClassSignatures)", false);
+    private final JCheckBox antiDeobfPoisonAnnoCheck = new JCheckBox("Призрачные аннотации (poisonAnnotations)", true);
+    private final JCheckBox antiDeobfPoisonInnerCheck = new JCheckBox("Повреждение внутренних классов (poisonInnerClasses)", true);
+    private final JCheckBox antiDeobfTrapRealCheck = new JCheckBox("Ловушки в методах (trapRealMethods)", true);
+    private final JCheckBox antiDeobfHoneypotsCheck = new JCheckBox("Фальшивые обработчики (honeypotEvaluators)", true);
+
     private final JCheckBox antiDebugCheck = new JCheckBox("Обнаружение отладчиков (Anti-Debug)", true);
+    private final JSpinner antiDebugCheckPercentSpinner = new JSpinner(new SpinnerNumberModel(50, 0, 100, 5));
+    private final JSpinner antiDebugDetectorsSpinner = new JSpinner(new SpinnerNumberModel(6, 1, 64, 1));
+
+    private final JCheckBox fileCrasherCheck = new JCheckBox("Мусорные атрибуты для краша утилит (File Crasher)", true);
+    private final JCheckBox runtimeIntegrityCheck = new JCheckBox("Контроль целостности архива (Runtime Integrity)", false);
+    private final JTextField runtimeIntegrityIncludeField = new JTextField();
+
+    private final JCheckBox flowFlattenCheck = new JCheckBox("Сглаживание потока (Control Flow Flattening)", true);
+    private final JSpinner flowFlattenPercentSpinner = new JSpinner(new SpinnerNumberModel(100, 0, 100, 5));
+    private final JCheckBox flowFlattenAllowRefLocalsCheck = new JCheckBox("Разрешить ссылочные локальные (allowReferenceLocals)", false);
+
+    private final JCheckBox safeControlFlowCheck = new JCheckBox("Непрозрачные предикаты (Safe Control Flow)", false);
+    private final JSpinner safeControlFlowLevelSpinner = new JSpinner(new SpinnerNumberModel(3, 1, 3, 1));
+
+    private final JCheckBox mangledJumpCheck = new JCheckBox("Ложные переходы GOTO (Mangled Jump)", false);
+    private final JCheckBox flowSwitchCheck = new JCheckBox("Предикаты switch (Flow Switch)", true);
+    private final JCheckBox integerReturnCheck = new JCheckBox("Шифрование возврата целых чисел (Integer Return)", true);
+
+    private final JCheckBox exceptionReturnCheck = new JCheckBox("Возврат через исключения (Exception Return)", true);
+    private final JSpinner exceptionReturnPercentSpinner = new JSpinner(new SpinnerNumberModel(100, 0, 100, 5));
+
+    private final JCheckBox stringEncCheck = new JCheckBox("Шифрование строк (String Encryption)", true);
+    private final JComboBox<String> stringEncTypeCombo = new JComboBox<>(new String[]{"POLYMORPHIC", "STANDARD"});
+
+    private final JCheckBox numberEncCheck = new JCheckBox("Шифрование чисел (Number Math)", true);
+    private final JSpinner numberEncLayersSpinner = new JSpinner(new SpinnerNumberModel(5, 1, 5, 1));
+
+    private final JCheckBox refHidingCheck = new JCheckBox("Скрытие вызовов invokedynamic (Reference Hiding)", true);
+    private final JSpinner refHidingPercentSpinner = new JSpinner(new SpinnerNumberModel(100, 0, 100, 5));
+    private final JSpinner refHidingBootstrapPoolSpinner = new JSpinner(new SpinnerNumberModel(8, 0, 64, 1));
+
+    private final JCheckBox fieldIndirectionCheck = new JCheckBox("Косвенный доступ к полям (Field Indirection)", true);
+    private final JSpinner fieldIndirectionPercentSpinner = new JSpinner(new SpinnerNumberModel(100, 0, 100, 5));
+
+    private final JCheckBox fieldPackingCheck = new JCheckBox("Упаковка полей в векторы состояния (Field Packing)", true);
+    private final JSpinner fieldPackingMinFieldsSpinner = new JSpinner(new SpinnerNumberModel(1, 1, 64, 1));
+
+    private final JCheckBox crossClassDispersionCheck = new JCheckBox("Распыление операций по классам (Cross-Class Dispersion)", true);
+    private final JSpinner dispersionPercentSpinner = new JSpinner(new SpinnerNumberModel(75, 0, 100, 5));
+    private final JSpinner dispersionSinksSpinner = new JSpinner(new SpinnerNumberModel(24, 1, 2048, 2));
+    private final JSpinner dispersionVariantsSpinner = new JSpinner(new SpinnerNumberModel(2, 1, 16, 1));
+    private final JSpinner dispersionMaxHelpersSpinner = new JSpinner(new SpinnerNumberModel(2048, 0, 8192, 128));
+    private final JSpinner dispersionMaxOpsSpinner = new JSpinner(new SpinnerNumberModel(8192, 0, 100000, 256));
+
+    private final JCheckBox semanticCoreCheck = new JCheckBox("Семантическое кодирование арифметики (Semantic Core)", true);
+    private final JSpinner semanticCorePercentSpinner = new JSpinner(new SpinnerNumberModel(45, 0, 100, 5));
+    private final JSpinner semanticCoreMinOpsSpinner = new JSpinner(new SpinnerNumberModel(3, 1, 32, 1));
+    private final JSpinner semanticCoreMaxMethodsSpinner = new JSpinner(new SpinnerNumberModel(64, 1, 512, 8));
+
+    private final JCheckBox semanticFabricCheck = new JCheckBox("Распределение логики по фрагментам (Semantic Fabric)", true);
+    private final JSpinner semanticFabricPercentSpinner = new JSpinner(new SpinnerNumberModel(100, 0, 100, 5));
+    private final JSpinner semanticFabricMinOpsSpinner = new JSpinner(new SpinnerNumberModel(3, 1, 32, 1));
+    private final JSpinner semanticFabricMaxMethodsSpinner = new JSpinner(new SpinnerNumberModel(96, 1, 512, 8));
+    private final JSpinner semanticFabricCarriersSpinner = new JSpinner(new SpinnerNumberModel(12, 3, 32, 1));
+
+    private final JCheckBox methodRelocationCheck = new JCheckBox("Перенос методов между классами (Method Relocation)", true);
+    private final JSpinner methodRelocPercentSpinner = new JSpinner(new SpinnerNumberModel(85, 0, 100, 5));
+    private final JSpinner methodRelocMaxMethodsSpinner = new JSpinner(new SpinnerNumberModel(128, 1, 512, 8));
+    private final JSpinner methodRelocCarriersSpinner = new JSpinner(new SpinnerNumberModel(16, 3, 48, 1));
+    private final JSpinner methodRelocMinInsnsSpinner = new JSpinner(new SpinnerNumberModel(20, 8, 256, 4));
+
+    private final JCheckBox methodExtractionCheck = new JCheckBox("Извлечение статических методов (Method Extraction)", true);
+    private final JSpinner methodExtractPercentSpinner = new JSpinner(new SpinnerNumberModel(100, 0, 100, 5));
+    private final JSpinner methodExtractMaxMethodsSpinner = new JSpinner(new SpinnerNumberModel(160, 1, 512, 8));
+    private final JSpinner methodExtractCarriersSpinner = new JSpinner(new SpinnerNumberModel(16, 3, 48, 1));
+    private final JSpinner methodExtractMinInsnsSpinner = new JSpinner(new SpinnerNumberModel(8, 4, 128, 2));
+
     private final JCheckBox renameClassesCheck = new JCheckBox("Переименование классов (Class Renamer)", true);
+    private final JTextField classPrefixField = new JTextField("a/");
+    private final JSpinner classDepthSpinner = new JSpinner(new SpinnerNumberModel(8, 1, 32, 1));
+    private final JCheckBox renameMainCheck = new JCheckBox("Переименовывать Main класс (renameMain)", true);
+
     private final JCheckBox renameMethodsCheck = new JCheckBox("Переименование методов (Method Renamer)", true);
+    private final JCheckBox renameMethodsPublicCheck = new JCheckBox("Переименовывать публичные методы", false);
+    private final JCheckBox renameMethodsVirtualCheck = new JCheckBox("Переименовывать виртуальные методы", false);
+    private final JSpinner methodDepthSpinner = new JSpinner(new SpinnerNumberModel(8, 1, 32, 1));
+
     private final JCheckBox renameFieldsCheck = new JCheckBox("Переименование полей (Field Renamer)", true);
+    private final JSpinner fieldDepthSpinner = new JSpinner(new SpinnerNumberModel(8, 1, 32, 1));
+
+    private final JTextField namingAlphabetField = new JTextField("I, l1, lI, 1l, ll, Il");
+
+    private final JCheckBox recordMetadataCheck = new JCheckBox("Скрытие метаданных Records (Record Metadata)", true);
+    private final JCheckBox recordEraseIdentityCheck = new JCheckBox("Стирать идентичность Records (eraseIdentity)", true);
+    private final JSpinner recordDepthSpinner = new JSpinner(new SpinnerNumberModel(8, 1, 32, 1));
+
     private final JCheckBox resourceRenamerCheck = new JCheckBox("Переименование ресурсов (Resource Renamer)", false);
+    private final JSpinner resourceDepthSpinner = new JSpinner(new SpinnerNumberModel(8, 1, 32, 1));
+    private final JTextField resourceExcludeNsField = new JTextField("minecraft");
+    private final JTextField resourceExcludeDirsField = new JTextField("fonts, icons, shaders");
+
+    private final JCheckBox sourceStripCheck = new JCheckBox("Очистка отладочной информации (Source Strip)", true);
+    private final JCheckBox stripLineNumbersCheck = new JCheckBox("Удалять номера строк (stripLineNumbers)", true);
+    private final JCheckBox stripLocalVarsCheck = new JCheckBox("Удалять имена локальных переменных (stripLocalVars)", true);
+    private final JCheckBox stripSignaturesCheck = new JCheckBox("Удалять сигнатуры дженериков (stripSignatures)", false);
+
+    private final JCheckBox releaseHardeningCheck = new JCheckBox("Очистка метаданных сборщика (Release Hardening)", true);
+    private final JCheckBox stripMavenCheck = new JCheckBox("Удалять META-INF/maven (stripMavenMetadata)", true);
+    private final JCheckBox stripFabricDescCheck = new JCheckBox("Очищать описание в fabric.mod.json", true);
+
+    private final JCheckBox annotationSanitizerCheck = new JCheckBox("Очистка специфичных аннотаций (Annotation Sanitizer)", false);
+    private final JTextField annotationSanitizerDescriptorsField = new JTextField();
 
     private final DefaultListModel<String> libsModel = new DefaultListModel<>();
     private final JList<String> libsList = new JList<>(libsModel);
@@ -103,9 +228,11 @@ public final class NullfuscatorFrame extends JFrame {
     public NullfuscatorFrame() {
         setTitle("Nullfuscator " + BuildInfo.VERSION + " — Standalone Obfuscator");
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        setSize(1080, 820);
-        setMinimumSize(new Dimension(900, 660));
+        setSize(1140, 840);
+        setMinimumSize(new Dimension(960, 680));
         setLocationRelativeTo(null);
+
+        setupCheckboxSynchronizations();
 
         JTabbedPane tabbedPane = new JTabbedPane();
         tabbedPane.setFont(safeFont(tabbedPane.getFont(), Font.BOLD, 13f));
@@ -113,6 +240,7 @@ public final class NullfuscatorFrame extends JFrame {
         tabbedPane.addTab("Инспектор JAR", createJarInspectorPanel());
         tabbedPane.addTab("Исключения (Exemptions)", createExemptionsPanel());
         tabbedPane.addTab("Трансформеры", createTransformersPanel());
+        tabbedPane.addTab("Лимиты и бюджеты", createBudgetsPanel());
         tabbedPane.addTab("Демаппинг (Retrace)", createRetracePanel());
         tabbedPane.addTab("Инфо о маппинге", createMappingInfoPanel());
 
@@ -121,7 +249,22 @@ public final class NullfuscatorFrame extends JFrame {
         setupGlobalDropTarget();
         loadPreferences();
 
+        presetCombo.addActionListener(e -> {
+            applyPresetDefaults((String) presetCombo.getSelectedItem());
+            applyProfileDefaults();
+        });
         profileCombo.addActionListener(e -> applyProfileDefaults());
+    }
+
+    private void setupCheckboxSynchronizations() {
+        renameMethodsPublicCheck.addActionListener(e -> keepPublicMethodsCheck.setSelected(!renameMethodsPublicCheck.isSelected()));
+        keepPublicMethodsCheck.addActionListener(e -> renameMethodsPublicCheck.setSelected(!keepPublicMethodsCheck.isSelected()));
+
+        renameMethodsVirtualCheck.addActionListener(e -> keepVirtualMethodsCheck.setSelected(!renameMethodsVirtualCheck.isSelected()));
+        keepVirtualMethodsCheck.addActionListener(e -> renameMethodsVirtualCheck.setSelected(!keepVirtualMethodsCheck.isSelected()));
+
+        stripSignaturesCheck.addActionListener(e -> keepSignaturesCheck.setSelected(!stripSignaturesCheck.isSelected()));
+        keepSignaturesCheck.addActionListener(e -> stripSignaturesCheck.setSelected(!keepSignaturesCheck.isSelected()));
     }
 
     private void setupAppIcon() {
@@ -941,6 +1084,22 @@ public final class NullfuscatorFrame extends JFrame {
         }
     }
 
+    private JPanel createFieldRow(String label, JComponent comp) {
+        JPanel p = new JPanel(new BorderLayout(8, 0));
+        JLabel l = new JLabel(label);
+        l.setPreferredSize(new Dimension(340, 24));
+        p.add(l, BorderLayout.WEST);
+        p.add(comp, BorderLayout.CENTER);
+        return p;
+    }
+
+    private JScrollPane wrapInScroll(JPanel content) {
+        JScrollPane scroll = new JScrollPane(content);
+        scroll.setBorder(null);
+        scroll.getVerticalScrollBar().setUnitIncrement(16);
+        return scroll;
+    }
+
     private JPanel createExemptionsPanel() {
         JPanel root = new JPanel(new BorderLayout(10, 10));
         root.setBorder(new EmptyBorder(14, 14, 14, 14));
@@ -952,15 +1111,28 @@ public final class NullfuscatorFrame extends JFrame {
         rulesPanel.add(keepPublicMethodsCheck);
         rulesPanel.add(keepVirtualMethodsCheck);
         rulesPanel.add(allowIncompleteClasspathCheck);
+        rulesPanel.add(allowMultiReleaseCheck);
         root.add(rulesPanel, BorderLayout.NORTH);
 
-        JPanel customPanel = createSectionPanel("Пакеты и классы для исключения (по одному в строке)");
-        customPanel.setLayout(new BorderLayout(6, 6));
+        JTabbedPane exTabs = new JTabbedPane();
 
+        JPanel customPanel = new JPanel(new BorderLayout(6, 6));
+        customPanel.setBorder(new EmptyBorder(8, 8, 8, 8));
         exemptionsArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
         exemptionsArea.setToolTipText("Примеры:\nru.myproject.gui\ndev.ranked.ac.security.*\ncom.example.api.PublicClass");
-        JScrollPane scroll = new JScrollPane(exemptionsArea);
-        customPanel.add(scroll, BorderLayout.CENTER);
+        customPanel.add(new JScrollPane(exemptionsArea), BorderLayout.CENTER);
+        JLabel hintLabel = new JLabel("<html><font color='#a1a1aa'>Укажи пакеты или классы без обфускации (defaults.exempt). Например: <code>com.mycompany.api.*</code> или <code>class{^ru/project/}</code></font></html>");
+        customPanel.add(hintLabel, BorderLayout.SOUTH);
+        exTabs.addTab("Исключения (defaults.exempt)", customPanel);
+
+        JPanel hotPanel = new JPanel(new BorderLayout(6, 6));
+        hotPanel.setBorder(new EmptyBorder(8, 8, 8, 8));
+        hotPathsArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
+        hotPathsArea.setToolTipText("Паттерны методов или аннотаций, где обфускация должна работать без тяжелых замедлений (hotPaths.exclude)");
+        hotPanel.add(new JScrollPane(hotPathsArea), BorderLayout.CENTER);
+        JLabel hotHintLabel = new JLabel("<html><font color='#a1a1aa'>Горячие пути, исключаемые из тяжелых трансформаторов (hotPaths.exclude). Например: <code>annotation{(^|/)Hot(Path)?$}</code> или <code>annotation{org/spongepowered/asm/mixin/}</code></font></html>");
+        hotPanel.add(hotHintLabel, BorderLayout.SOUTH);
+        exTabs.addTab("Горячие пути (hotPaths.exclude)", hotPanel);
 
         exemptMixinsCheck.addActionListener(e -> jarTree.repaint());
         exemptionsArea.getDocument().addDocumentListener(new DocumentListener() {
@@ -969,51 +1141,432 @@ public final class NullfuscatorFrame extends JFrame {
             public void changedUpdate(DocumentEvent e) { jarTree.repaint(); }
         });
 
-        JLabel hintLabel = new JLabel("<html><font color='#a1a1aa'>Укажи пакеты или классы без обфускации. Например: <code>com.mycompany.api.*</code> или <code>ru.project.config.MyConfig</code></font></html>");
-        customPanel.add(hintLabel, BorderLayout.SOUTH);
-
-        root.add(customPanel, BorderLayout.CENTER);
-
+        root.add(exTabs, BorderLayout.CENTER);
         return root;
     }
 
-    private JPanel createTransformersPanel() {
+    private JPanel createBudgetsPanel() {
         JPanel root = new JPanel(new BorderLayout(10, 10));
         root.setBorder(new EmptyBorder(14, 14, 14, 14));
 
-        JPanel transCard = createSectionPanel("Активные модули защиты (Transformers)");
-        transCard.setLayout(new GridLayout(6, 2, 10, 10));
+        JPanel content = new JPanel();
+        content.setLayout(new BoxLayout(content, BoxLayout.Y_AXIS));
 
-        transCard.add(stringEncCheck);
-        transCard.add(numberEncCheck);
-        transCard.add(flowFlattenCheck);
-        transCard.add(antiDecompilerCheck);
-        transCard.add(antiDeobfCheck);
-        transCard.add(antiAiCheck);
-        transCard.add(antiDebugCheck);
-        transCard.add(renameClassesCheck);
-        transCard.add(renameMethodsCheck);
-        transCard.add(renameFieldsCheck);
-        transCard.add(resourceRenamerCheck);
+        JPanel jarCard = createSectionPanel("Бюджет роста размера JAR (Jar Growth Budget)");
+        jarCard.setLayout(new BoxLayout(jarCard, BoxLayout.Y_AXIS));
+        jarCard.add(budgetsEnabledCheck);
+        jarCard.add(Box.createVerticalStrut(8));
+        jarCard.add(createFieldRow("Максимальный допустимый рост JAR (%):", maxJarGrowthPercentSpinner));
+        jarCard.add(Box.createVerticalStrut(6));
+        jarCard.add(createFieldRow("Запас роста размера JAR (в байтах):", jarGrowthBytesSpinner));
+        content.add(jarCard);
+        content.add(Box.createVerticalStrut(10));
 
-        root.add(transCard, BorderLayout.NORTH);
+        JPanel structCard = createSectionPanel("Бюджеты структуры байткода (Classes / Methods / Instructions)");
+        structCard.setLayout(new BoxLayout(structCard, BoxLayout.Y_AXIS));
+        structCard.add(createFieldRow("Максимальный рост числа классов (%):", maxClassGrowthPercentSpinner));
+        structCard.add(Box.createVerticalStrut(6));
+        structCard.add(createFieldRow("Допустимый запас роста классов (шт):", classGrowthAllowanceSpinner));
+        structCard.add(Box.createVerticalStrut(6));
+        structCard.add(createFieldRow("Максимальный рост числа методов (%):", maxMethodGrowthPercentSpinner));
+        structCard.add(Box.createVerticalStrut(6));
+        structCard.add(createFieldRow("Допустимый запас роста методов (шт):", methodGrowthAllowanceSpinner));
+        structCard.add(Box.createVerticalStrut(6));
+        structCard.add(createFieldRow("Максимальный рост инструкций байткода (%):", maxInstructionGrowthPercentSpinner));
+        structCard.add(Box.createVerticalStrut(6));
+        structCard.add(createFieldRow("Допустимый запас инструкций (шт):", instructionGrowthAllowanceSpinner));
+        content.add(structCard);
+        content.add(Box.createVerticalStrut(10));
 
-        JPanel infoPanel = createSectionPanel("Подсказка по режимам");
-        infoPanel.setLayout(new BorderLayout(6, 6));
+        JPanel covCard = createSectionPanel("Политика минимального покрытия (Coverage Policy)");
+        covCard.setLayout(new BoxLayout(covCard, BoxLayout.Y_AXIS));
+        covCard.add(coverageEnabledCheck);
+        covCard.add(Box.createVerticalStrut(8));
+        covCard.add(createFieldRow("Минимальный процент модификации (%):", coverageMinPercentSpinner));
+        covCard.add(Box.createVerticalStrut(6));
+        covCard.add(createFieldRow("Обязательные селекторы (coverage.required):", coverageRequiredField));
+        content.add(covCard);
+        content.add(Box.createVerticalStrut(10));
+
+        JPanel infoCard = createSectionPanel("Справка по бюджетам");
+        infoCard.setLayout(new BorderLayout(6, 6));
         JTextArea infoText = new JTextArea();
         infoText.setEditable(false);
         infoText.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 12));
         infoText.setBackground(root.getBackground());
         infoText.setText(
-                "• Для Fabric/Forge модов обязательно отключайте 'Переименование ресурсов' (иначе ломаются lang/*.json и текстуры).\n" +
-                "• 'Не переименовывать публичные методы' рекомендуется для плагинов и модов с открытыми API и событиями.\n" +
-                "• 'Сохранять сигнатуры дженериков' необходимо, если используется сериализация Gson или Jackson.\n" +
-                "• При возникновении проблем с производительностью отключите Control Flow или выберите пресет Balanced/Light."
+                "• Бюджеты роста гарантируют, что итоговый размер JAR или объем байткода не превысит лимиты.\n" +
+                "• Значение -1 в процентах отключает относительную проверку (без ограничений на рост).\n" +
+                "• Политика Coverage позволяет требовать, чтобы обфускация затронула не менее N% целевых методов."
         );
-        infoPanel.add(infoText, BorderLayout.CENTER);
-        root.add(infoPanel, BorderLayout.CENTER);
+        infoCard.add(infoText, BorderLayout.CENTER);
+        content.add(infoCard);
 
+        root.add(wrapInScroll(content), BorderLayout.CENTER);
         return root;
+    }
+
+    private JPanel createTransformersPanel() {
+        JPanel root = new JPanel(new BorderLayout(8, 8));
+        root.setBorder(new EmptyBorder(12, 12, 12, 12));
+
+        JPanel topBar = new JPanel(new BorderLayout(8, 0));
+        topBar.setBorder(new EmptyBorder(0, 0, 6, 0));
+        JButton syncBtn = new JButton("↺ Применить настройки текущего пресета ко всем трансформерам");
+        syncBtn.setToolTipText("Сбрасывает переключатели и параметры трансформеров к значениям выбранного пресета");
+        syncBtn.addActionListener(e -> applyPresetDefaults((String) presetCombo.getSelectedItem()));
+        topBar.add(new JLabel("Тонкая настройка каждого трансформера Nullfuscator:"), BorderLayout.WEST);
+        topBar.add(syncBtn, BorderLayout.EAST);
+        root.add(topBar, BorderLayout.NORTH);
+
+        JTabbedPane subTabs = new JTabbedPane();
+        subTabs.setFont(safeFont(subTabs.getFont(), Font.PLAIN, 12f));
+        subTabs.addTab("🛡 Анализ и защита", createAnalysisAndSecurityTab());
+        subTabs.addTab("🔀 Поток выполнения", createControlFlowTab());
+        subTabs.addTab("🔐 Шифрование и ссылки", createEncryptionTab());
+        subTabs.addTab("🌐 Распыление и семантика", createDispersionTab());
+        subTabs.addTab("🏷 Имена и метаданные", createRenamingTab());
+
+        root.add(subTabs, BorderLayout.CENTER);
+        return root;
+    }
+
+    private JComponent createAnalysisAndSecurityTab() {
+        JPanel content = new JPanel();
+        content.setLayout(new BoxLayout(content, BoxLayout.Y_AXIS));
+        content.setBorder(new EmptyBorder(8, 8, 8, 8));
+
+        JPanel aiCard = createSectionPanel("Защита от искусственного интеллекта (Anti-AI)");
+        aiCard.setLayout(new BoxLayout(aiCard, BoxLayout.Y_AXIS));
+        aiCard.add(antiAiCheck);
+        aiCard.add(Box.createVerticalStrut(6));
+        aiCard.add(createFieldRow("Уровень защиты (level 1-3):", antiAiLevelSpinner));
+        aiCard.add(Box.createVerticalStrut(4));
+        aiCard.add(createFieldRow("Процент кодирования констант (%):", antiAiConstPercentSpinner));
+        aiCard.add(Box.createVerticalStrut(4));
+        aiCard.add(createFieldRow("Количество ложных методов-приманок (decoyMethods):", antiAiDecoySpinner));
+        content.add(aiCard);
+        content.add(Box.createVerticalStrut(8));
+
+        JPanel decompCard = createSectionPanel("Защита от декомпиляторов (Anti-Decompiler)");
+        decompCard.setLayout(new BoxLayout(decompCard, BoxLayout.Y_AXIS));
+        decompCard.add(antiDecompilerCheck);
+        decompCard.add(Box.createVerticalStrut(6));
+        decompCard.add(createFieldRow("Уровень атак на декомпиляторы (level 1-3):", antiDecompilerLevelSpinner));
+        content.add(decompCard);
+        content.add(Box.createVerticalStrut(8));
+
+        JPanel deobfCard = createSectionPanel("Защита от AST деобфускаторов (Anti-Deobf)");
+        deobfCard.setLayout(new BoxLayout(deobfCard, BoxLayout.Y_AXIS));
+        deobfCard.add(antiDeobfCheck);
+        deobfCard.add(Box.createVerticalStrut(6));
+        deobfCard.add(createFieldRow("Уровень разрушения AST (level 1-3):", antiDeobfLevelSpinner));
+        deobfCard.add(Box.createVerticalStrut(6));
+        JPanel deobfGrid = new JPanel(new GridLayout(3, 2, 6, 4));
+        deobfGrid.add(antiDeobfBadSigCheck);
+        deobfGrid.add(antiDeobfBadClassSigCheck);
+        deobfGrid.add(antiDeobfPoisonAnnoCheck);
+        deobfGrid.add(antiDeobfPoisonInnerCheck);
+        deobfGrid.add(antiDeobfTrapRealCheck);
+        deobfGrid.add(antiDeobfHoneypotsCheck);
+        deobfCard.add(deobfGrid);
+        content.add(deobfCard);
+        content.add(Box.createVerticalStrut(8));
+
+        JPanel debugCard = createSectionPanel("Обнаружение отладчиков (Anti-Debug)");
+        debugCard.setLayout(new BoxLayout(debugCard, BoxLayout.Y_AXIS));
+        debugCard.add(antiDebugCheck);
+        debugCard.add(Box.createVerticalStrut(6));
+        debugCard.add(createFieldRow("Процент защищаемых методов (%):", antiDebugCheckPercentSpinner));
+        debugCard.add(Box.createVerticalStrut(4));
+        debugCard.add(createFieldRow("Количество детекторов отладки (detectors):", antiDebugDetectorsSpinner));
+        content.add(debugCard);
+        content.add(Box.createVerticalStrut(8));
+
+        JPanel crasherCard = createSectionPanel("Целостность и краш инструментов (Hardening & Crasher)");
+        crasherCard.setLayout(new BoxLayout(crasherCard, BoxLayout.Y_AXIS));
+        crasherCard.add(fileCrasherCheck);
+        crasherCard.add(Box.createVerticalStrut(6));
+        crasherCard.add(runtimeIntegrityCheck);
+        crasherCard.add(Box.createVerticalStrut(4));
+        crasherCard.add(createFieldRow("Классы для контроля целостности (include):", runtimeIntegrityIncludeField));
+        content.add(crasherCard);
+
+        return wrapInScroll(content);
+    }
+
+    private JComponent createControlFlowTab() {
+        JPanel content = new JPanel();
+        content.setLayout(new BoxLayout(content, BoxLayout.Y_AXIS));
+        content.setBorder(new EmptyBorder(8, 8, 8, 8));
+
+        JPanel flatCard = createSectionPanel("Сглаживание потока (Control Flow Flattening)");
+        flatCard.setLayout(new BoxLayout(flatCard, BoxLayout.Y_AXIS));
+        flatCard.add(flowFlattenCheck);
+        flatCard.add(Box.createVerticalStrut(6));
+        flatCard.add(createFieldRow("Интенсивность сглаживания (%):", flowFlattenPercentSpinner));
+        flatCard.add(Box.createVerticalStrut(4));
+        flatCard.add(flowFlattenAllowRefLocalsCheck);
+        content.add(flatCard);
+        content.add(Box.createVerticalStrut(8));
+
+        JPanel safeCard = createSectionPanel("Непрозрачные предикаты (Safe Control Flow)");
+        safeCard.setLayout(new BoxLayout(safeCard, BoxLayout.Y_AXIS));
+        safeCard.add(safeControlFlowCheck);
+        safeCard.add(Box.createVerticalStrut(6));
+        safeCard.add(createFieldRow("Уровень сложности предикатов (level 1-3):", safeControlFlowLevelSpinner));
+        content.add(safeCard);
+        content.add(Box.createVerticalStrut(8));
+
+        JPanel branchCard = createSectionPanel("Мутация переходов и ветвлений");
+        branchCard.setLayout(new BoxLayout(branchCard, BoxLayout.Y_AXIS));
+        branchCard.add(mangledJumpCheck);
+        branchCard.add(Box.createVerticalStrut(4));
+        branchCard.add(flowSwitchCheck);
+        content.add(branchCard);
+        content.add(Box.createVerticalStrut(8));
+
+        JPanel retCard = createSectionPanel("Шифрование возврата значений");
+        retCard.setLayout(new BoxLayout(retCard, BoxLayout.Y_AXIS));
+        retCard.add(integerReturnCheck);
+        retCard.add(Box.createVerticalStrut(6));
+        retCard.add(exceptionReturnCheck);
+        retCard.add(Box.createVerticalStrut(4));
+        retCard.add(createFieldRow("Процент методов с Exception Return (%):", exceptionReturnPercentSpinner));
+        content.add(retCard);
+
+        return wrapInScroll(content);
+    }
+
+    private JComponent createEncryptionTab() {
+        JPanel content = new JPanel();
+        content.setLayout(new BoxLayout(content, BoxLayout.Y_AXIS));
+        content.setBorder(new EmptyBorder(8, 8, 8, 8));
+
+        JPanel strCard = createSectionPanel("Шифрование строк (String Encryption)");
+        strCard.setLayout(new BoxLayout(strCard, BoxLayout.Y_AXIS));
+        strCard.add(stringEncCheck);
+        strCard.add(Box.createVerticalStrut(6));
+        strCard.add(createFieldRow("Тип шифрования строк:", stringEncTypeCombo));
+        content.add(strCard);
+        content.add(Box.createVerticalStrut(8));
+
+        JPanel numCard = createSectionPanel("Шифрование констант и чисел (Number Encryption)");
+        numCard.setLayout(new BoxLayout(numCard, BoxLayout.Y_AXIS));
+        numCard.add(numberEncCheck);
+        numCard.add(Box.createVerticalStrut(6));
+        numCard.add(createFieldRow("Количество слоев математики (layers 1-5):", numberEncLayersSpinner));
+        content.add(numCard);
+        content.add(Box.createVerticalStrut(8));
+
+        JPanel indyCard = createSectionPanel("Скрытие вызовов через invokedynamic (Reference Hiding)");
+        indyCard.setLayout(new BoxLayout(indyCard, BoxLayout.Y_AXIS));
+        indyCard.add(refHidingCheck);
+        indyCard.add(Box.createVerticalStrut(6));
+        indyCard.add(createFieldRow("Процент скрываемых вызовов (%):", refHidingPercentSpinner));
+        indyCard.add(Box.createVerticalStrut(4));
+        indyCard.add(createFieldRow("Размер пула bootstrap методов:", refHidingBootstrapPoolSpinner));
+        content.add(indyCard);
+        content.add(Box.createVerticalStrut(8));
+
+        JPanel indirCard = createSectionPanel("Косвенный доступ к полям (Field Indirection)");
+        indirCard.setLayout(new BoxLayout(indirCard, BoxLayout.Y_AXIS));
+        indirCard.add(fieldIndirectionCheck);
+        indirCard.add(Box.createVerticalStrut(6));
+        indirCard.add(createFieldRow("Процент косвенных доступов (%):", fieldIndirectionPercentSpinner));
+        content.add(indirCard);
+        content.add(Box.createVerticalStrut(8));
+
+        JPanel packCard = createSectionPanel("Упаковка полей (Field Packing)");
+        packCard.setLayout(new BoxLayout(packCard, BoxLayout.Y_AXIS));
+        packCard.add(fieldPackingCheck);
+        packCard.add(Box.createVerticalStrut(6));
+        packCard.add(createFieldRow("Мин. число полей для упаковки (minFields):", fieldPackingMinFieldsSpinner));
+        content.add(packCard);
+
+        return wrapInScroll(content);
+    }
+
+    private JComponent createDispersionTab() {
+        JPanel content = new JPanel();
+        content.setLayout(new BoxLayout(content, BoxLayout.Y_AXIS));
+        content.setBorder(new EmptyBorder(8, 8, 8, 8));
+
+        JPanel dispCard = createSectionPanel("Межклассовое распыление (Cross-Class Dispersion)");
+        dispCard.setLayout(new BoxLayout(dispCard, BoxLayout.Y_AXIS));
+        dispCard.add(crossClassDispersionCheck);
+        dispCard.add(Box.createVerticalStrut(6));
+        dispCard.add(createFieldRow("Процент распыляемых операций (%):", dispersionPercentSpinner));
+        dispCard.add(Box.createVerticalStrut(4));
+        dispCard.add(createFieldRow("Количество классов-приемников (sinks):", dispersionSinksSpinner));
+        dispCard.add(Box.createVerticalStrut(4));
+        dispCard.add(createFieldRow("Вариантов на опкод (variantsPerOpcode):", dispersionVariantsSpinner));
+        dispCard.add(Box.createVerticalStrut(4));
+        dispCard.add(createFieldRow("Максимум хелперов (maxHelpers):", dispersionMaxHelpersSpinner));
+        dispCard.add(Box.createVerticalStrut(4));
+        dispCard.add(createFieldRow("Максимум операций (maxOperations):", dispersionMaxOpsSpinner));
+        content.add(dispCard);
+        content.add(Box.createVerticalStrut(8));
+
+        JPanel semCoreCard = createSectionPanel("Семантическое кодирование выражений (Semantic Core)");
+        semCoreCard.setLayout(new BoxLayout(semCoreCard, BoxLayout.Y_AXIS));
+        semCoreCard.add(semanticCoreCheck);
+        semCoreCard.add(Box.createVerticalStrut(6));
+        semCoreCard.add(createFieldRow("Процент покрытия (%):", semanticCorePercentSpinner));
+        semCoreCard.add(Box.createVerticalStrut(4));
+        semCoreCard.add(createFieldRow("Мин. операций в блоке (minOperations):", semanticCoreMinOpsSpinner));
+        semCoreCard.add(Box.createVerticalStrut(4));
+        semCoreCard.add(createFieldRow("Максимум методов (maxMethods):", semanticCoreMaxMethodsSpinner));
+        content.add(semCoreCard);
+        content.add(Box.createVerticalStrut(8));
+
+        JPanel semFabCard = createSectionPanel("Семантическая ткань (Semantic Fabric)");
+        semFabCard.setLayout(new BoxLayout(semFabCard, BoxLayout.Y_AXIS));
+        semFabCard.add(semanticFabricCheck);
+        semFabCard.add(Box.createVerticalStrut(6));
+        semFabCard.add(createFieldRow("Процент покрытия (%):", semanticFabricPercentSpinner));
+        semFabCard.add(Box.createVerticalStrut(4));
+        semFabCard.add(createFieldRow("Мин. арифметических операций (minArithmeticOps):", semanticFabricMinOpsSpinner));
+        semFabCard.add(Box.createVerticalStrut(4));
+        semFabCard.add(createFieldRow("Максимум методов (maxMethods):", semanticFabricMaxMethodsSpinner));
+        semFabCard.add(Box.createVerticalStrut(4));
+        semFabCard.add(createFieldRow("Классов-носителей (carriers):", semanticFabricCarriersSpinner));
+        content.add(semFabCard);
+        content.add(Box.createVerticalStrut(8));
+
+        JPanel relocCard = createSectionPanel("Перемещение методов между классами (Method Relocation)");
+        relocCard.setLayout(new BoxLayout(relocCard, BoxLayout.Y_AXIS));
+        relocCard.add(methodRelocationCheck);
+        relocCard.add(Box.createVerticalStrut(6));
+        relocCard.add(createFieldRow("Процент перемещаемых методов (%):", methodRelocPercentSpinner));
+        relocCard.add(Box.createVerticalStrut(4));
+        relocCard.add(createFieldRow("Максимум методов (maxMethods):", methodRelocMaxMethodsSpinner));
+        relocCard.add(Box.createVerticalStrut(4));
+        relocCard.add(createFieldRow("Классов-носителей (carriers):", methodRelocCarriersSpinner));
+        relocCard.add(Box.createVerticalStrut(4));
+        relocCard.add(createFieldRow("Мин. инструкций для переноса (minInstructions):", methodRelocMinInsnsSpinner));
+        content.add(relocCard);
+        content.add(Box.createVerticalStrut(8));
+
+        JPanel extractCard = createSectionPanel("Извлечение статических методов (Method Extraction)");
+        extractCard.setLayout(new BoxLayout(extractCard, BoxLayout.Y_AXIS));
+        extractCard.add(methodExtractionCheck);
+        extractCard.add(Box.createVerticalStrut(6));
+        extractCard.add(createFieldRow("Процент извлекаемых методов (%):", methodExtractPercentSpinner));
+        extractCard.add(Box.createVerticalStrut(4));
+        extractCard.add(createFieldRow("Максимум методов (maxMethods):", methodExtractMaxMethodsSpinner));
+        extractCard.add(Box.createVerticalStrut(4));
+        extractCard.add(createFieldRow("Классов-носителей (carriers):", methodExtractCarriersSpinner));
+        extractCard.add(Box.createVerticalStrut(4));
+        extractCard.add(createFieldRow("Мин. инструкций для извлечения (minInstructions):", methodExtractMinInsnsSpinner));
+        content.add(extractCard);
+
+        return wrapInScroll(content);
+    }
+
+    private JComponent createRenamingTab() {
+        JPanel content = new JPanel();
+        content.setLayout(new BoxLayout(content, BoxLayout.Y_AXIS));
+        content.setBorder(new EmptyBorder(8, 8, 8, 8));
+
+        JPanel clsCard = createSectionPanel("Переименование классов (Class Renamer)");
+        clsCard.setLayout(new BoxLayout(clsCard, BoxLayout.Y_AXIS));
+        clsCard.add(renameClassesCheck);
+        clsCard.add(Box.createVerticalStrut(6));
+        clsCard.add(renameMainCheck);
+        clsCard.add(Box.createVerticalStrut(4));
+        clsCard.add(createFieldRow("Префикс пакета (prefix):", classPrefixField));
+        clsCard.add(Box.createVerticalStrut(4));
+        clsCard.add(createFieldRow("Длина имен классов (depth):", classDepthSpinner));
+        content.add(clsCard);
+        content.add(Box.createVerticalStrut(8));
+
+        JPanel mtdCard = createSectionPanel("Переименование методов (Method Renamer)");
+        mtdCard.setLayout(new BoxLayout(mtdCard, BoxLayout.Y_AXIS));
+        mtdCard.add(renameMethodsCheck);
+        mtdCard.add(Box.createVerticalStrut(6));
+        JPanel mtdRow = new JPanel(new GridLayout(1, 2, 6, 4));
+        mtdRow.add(renameMethodsPublicCheck);
+        mtdRow.add(renameMethodsVirtualCheck);
+        mtdCard.add(mtdRow);
+        mtdCard.add(Box.createVerticalStrut(4));
+        mtdCard.add(createFieldRow("Длина имен методов (depth):", methodDepthSpinner));
+        content.add(mtdCard);
+        content.add(Box.createVerticalStrut(8));
+
+        JPanel fldCard = createSectionPanel("Переименование полей (Field Renamer)");
+        fldCard.setLayout(new BoxLayout(fldCard, BoxLayout.Y_AXIS));
+        fldCard.add(renameFieldsCheck);
+        fldCard.add(Box.createVerticalStrut(6));
+        fldCard.add(createFieldRow("Длина имен полей (depth):", fieldDepthSpinner));
+        content.add(fldCard);
+        content.add(Box.createVerticalStrut(8));
+
+        JPanel alphaCard = createSectionPanel("Алфавит переименования (Naming Alphabet)");
+        alphaCard.setLayout(new BoxLayout(alphaCard, BoxLayout.Y_AXIS));
+        alphaCard.add(createFieldRow("Символы имен (через запятую):", namingAlphabetField));
+        content.add(alphaCard);
+        content.add(Box.createVerticalStrut(8));
+
+        JPanel recCard = createSectionPanel("Метаданные Records (Record Metadata)");
+        recCard.setLayout(new BoxLayout(recCard, BoxLayout.Y_AXIS));
+        recCard.add(recordMetadataCheck);
+        recCard.add(Box.createVerticalStrut(6));
+        recCard.add(recordEraseIdentityCheck);
+        recCard.add(Box.createVerticalStrut(4));
+        recCard.add(createFieldRow("Длина имен компонентов record (depth):", recordDepthSpinner));
+        content.add(recCard);
+        content.add(Box.createVerticalStrut(8));
+
+        JPanel resCard = createSectionPanel("Переименование ресурсов (Resource Renamer)");
+        resCard.setLayout(new BoxLayout(resCard, BoxLayout.Y_AXIS));
+        resCard.add(resourceRenamerCheck);
+        resCard.add(Box.createVerticalStrut(6));
+        resCard.add(createFieldRow("Длина имен ресурсов (depth):", resourceDepthSpinner));
+        resCard.add(Box.createVerticalStrut(4));
+        resCard.add(createFieldRow("Исключенные namespaces (через запятую):", resourceExcludeNsField));
+        resCard.add(Box.createVerticalStrut(4));
+        resCard.add(createFieldRow("Исключенные директории (через запятую):", resourceExcludeDirsField));
+        content.add(resCard);
+        content.add(Box.createVerticalStrut(8));
+
+        JPanel stripCard = createSectionPanel("Очистка отладочной информации (Source Strip)");
+        stripCard.setLayout(new BoxLayout(stripCard, BoxLayout.Y_AXIS));
+        stripCard.add(sourceStripCheck);
+        stripCard.add(Box.createVerticalStrut(6));
+        JPanel stripGrid = new JPanel(new GridLayout(2, 2, 6, 4));
+        stripGrid.add(stripLineNumbersCheck);
+        stripGrid.add(stripLocalVarsCheck);
+        stripGrid.add(stripSignaturesCheck);
+        stripCard.add(stripGrid);
+        content.add(stripCard);
+        content.add(Box.createVerticalStrut(8));
+
+        JPanel hardCard = createSectionPanel("Очистка метаданных сборщика (Release Hardening)");
+        hardCard.setLayout(new BoxLayout(hardCard, BoxLayout.Y_AXIS));
+        hardCard.add(releaseHardeningCheck);
+        hardCard.add(Box.createVerticalStrut(6));
+        JPanel hardGrid = new JPanel(new GridLayout(1, 2, 6, 4));
+        hardGrid.add(stripMavenCheck);
+        hardGrid.add(stripFabricDescCheck);
+        hardCard.add(hardGrid);
+        content.add(hardCard);
+        content.add(Box.createVerticalStrut(8));
+
+        JPanel annoCard = createSectionPanel("Удаление аннотаций (Annotation Sanitizer)");
+        annoCard.setLayout(new BoxLayout(annoCard, BoxLayout.Y_AXIS));
+        annoCard.add(annotationSanitizerCheck);
+        annoCard.add(Box.createVerticalStrut(6));
+        annoCard.add(createFieldRow("Дескрипторы аннотаций (через запятую):", annotationSanitizerDescriptorsField));
+        content.add(annoCard);
+        content.add(Box.createVerticalStrut(8));
+
+        JPanel mrCard = createSectionPanel("Совместимость с Multi-Release JAR");
+        mrCard.setLayout(new BoxLayout(mrCard, BoxLayout.Y_AXIS));
+        mrCard.add(allowMultiReleaseCheck);
+        content.add(mrCard);
+
+        return wrapInScroll(content);
     }
 
     private JPanel createRetracePanel() {
@@ -1185,6 +1738,500 @@ public final class NullfuscatorFrame extends JFrame {
         }
     }
 
+    private void applyPresetDefaults(String preset) {
+        if (preset == null) return;
+        switch (preset.toLowerCase()) {
+            case "light" -> {
+                sourceStripCheck.setSelected(true);
+                stripLineNumbersCheck.setSelected(false);
+                stripLocalVarsCheck.setSelected(true);
+                stripSignaturesCheck.setSelected(false);
+                keepSignaturesCheck.setSelected(true);
+
+                renameClassesCheck.setSelected(true);
+                renameMainCheck.setSelected(false);
+                classPrefixField.setText("a/");
+                classDepthSpinner.setValue(5);
+
+                renameMethodsCheck.setSelected(true);
+                renameMethodsPublicCheck.setSelected(false);
+                keepPublicMethodsCheck.setSelected(true);
+                renameMethodsVirtualCheck.setSelected(false);
+                keepVirtualMethodsCheck.setSelected(true);
+                methodDepthSpinner.setValue(5);
+
+                renameFieldsCheck.setSelected(true);
+                fieldDepthSpinner.setValue(5);
+
+                stringEncCheck.setSelected(true);
+                stringEncTypeCombo.setSelectedItem("STANDARD");
+
+                resourceRenamerCheck.setSelected(false);
+                resourceDepthSpinner.setValue(5);
+
+                releaseHardeningCheck.setSelected(true);
+                stripMavenCheck.setSelected(true);
+                stripFabricDescCheck.setSelected(true);
+
+                numberEncCheck.setSelected(false);
+                numberEncLayersSpinner.setValue(1);
+
+                safeControlFlowCheck.setSelected(false);
+                safeControlFlowLevelSpinner.setValue(1);
+
+                flowFlattenCheck.setSelected(false);
+                flowFlattenPercentSpinner.setValue(10);
+                flowFlattenAllowRefLocalsCheck.setSelected(false);
+
+                mangledJumpCheck.setSelected(false);
+                flowSwitchCheck.setSelected(false);
+                integerReturnCheck.setSelected(false);
+                exceptionReturnCheck.setSelected(false);
+                exceptionReturnPercentSpinner.setValue(10);
+
+                antiAiCheck.setSelected(false);
+                antiAiLevelSpinner.setValue(1);
+                antiAiConstPercentSpinner.setValue(20);
+                antiAiDecoySpinner.setValue(2);
+
+                antiDecompilerCheck.setSelected(false);
+                antiDecompilerLevelSpinner.setValue(1);
+
+                antiDeobfCheck.setSelected(false);
+                antiDeobfLevelSpinner.setValue(1);
+                antiDeobfBadSigCheck.setSelected(false);
+                antiDeobfBadClassSigCheck.setSelected(false);
+                antiDeobfPoisonAnnoCheck.setSelected(false);
+                antiDeobfPoisonInnerCheck.setSelected(false);
+                antiDeobfTrapRealCheck.setSelected(false);
+                antiDeobfHoneypotsCheck.setSelected(false);
+
+                antiDebugCheck.setSelected(false);
+                antiDebugCheckPercentSpinner.setValue(10);
+                antiDebugDetectorsSpinner.setValue(2);
+
+                fileCrasherCheck.setSelected(false);
+                runtimeIntegrityCheck.setSelected(false);
+
+                refHidingCheck.setSelected(false);
+                refHidingPercentSpinner.setValue(10);
+                refHidingBootstrapPoolSpinner.setValue(4);
+
+                fieldIndirectionCheck.setSelected(false);
+                fieldIndirectionPercentSpinner.setValue(10);
+
+                fieldPackingCheck.setSelected(false);
+                fieldPackingMinFieldsSpinner.setValue(1);
+
+                crossClassDispersionCheck.setSelected(false);
+                dispersionPercentSpinner.setValue(10);
+
+                semanticCoreCheck.setSelected(false);
+                semanticCorePercentSpinner.setValue(10);
+
+                semanticFabricCheck.setSelected(false);
+                semanticFabricPercentSpinner.setValue(10);
+
+                methodRelocationCheck.setSelected(false);
+                methodRelocPercentSpinner.setValue(10);
+
+                methodExtractionCheck.setSelected(false);
+                methodExtractPercentSpinner.setValue(10);
+
+                recordMetadataCheck.setSelected(false);
+                recordEraseIdentityCheck.setSelected(false);
+                recordDepthSpinner.setValue(5);
+
+                budgetsEnabledCheck.setSelected(true);
+                maxJarGrowthPercentSpinner.setValue(35);
+                jarGrowthBytesSpinner.setValue(32768);
+                maxClassGrowthPercentSpinner.setValue(0);
+                classGrowthAllowanceSpinner.setValue(1);
+                maxMethodGrowthPercentSpinner.setValue(5);
+                methodGrowthAllowanceSpinner.setValue(8);
+                maxInstructionGrowthPercentSpinner.setValue(30);
+                instructionGrowthAllowanceSpinner.setValue(128);
+
+                coverageEnabledCheck.setSelected(false);
+            }
+            case "balanced" -> {
+                sourceStripCheck.setSelected(true);
+                stripLineNumbersCheck.setSelected(true);
+                stripLocalVarsCheck.setSelected(true);
+                stripSignaturesCheck.setSelected(false);
+                keepSignaturesCheck.setSelected(true);
+
+                renameClassesCheck.setSelected(true);
+                renameMainCheck.setSelected(false);
+                classPrefixField.setText("a/");
+                classDepthSpinner.setValue(6);
+
+                renameMethodsCheck.setSelected(true);
+                renameMethodsPublicCheck.setSelected(false);
+                keepPublicMethodsCheck.setSelected(true);
+                renameMethodsVirtualCheck.setSelected(false);
+                keepVirtualMethodsCheck.setSelected(true);
+                methodDepthSpinner.setValue(6);
+
+                renameFieldsCheck.setSelected(true);
+                fieldDepthSpinner.setValue(6);
+
+                stringEncCheck.setSelected(true);
+                stringEncTypeCombo.setSelectedItem("POLYMORPHIC");
+
+                resourceRenamerCheck.setSelected(false);
+                resourceDepthSpinner.setValue(6);
+
+                releaseHardeningCheck.setSelected(true);
+                stripMavenCheck.setSelected(true);
+                stripFabricDescCheck.setSelected(true);
+
+                numberEncCheck.setSelected(true);
+                numberEncLayersSpinner.setValue(2);
+
+                safeControlFlowCheck.setSelected(true);
+                safeControlFlowLevelSpinner.setValue(1);
+
+                crossClassDispersionCheck.setSelected(true);
+                dispersionPercentSpinner.setValue(20);
+                dispersionSinksSpinner.setValue(4);
+                dispersionVariantsSpinner.setValue(1);
+                dispersionMaxHelpersSpinner.setValue(96);
+                dispersionMaxOpsSpinner.setValue(512);
+
+                refHidingCheck.setSelected(true);
+                refHidingPercentSpinner.setValue(15);
+                refHidingBootstrapPoolSpinner.setValue(4);
+
+                flowFlattenCheck.setSelected(false);
+                flowFlattenPercentSpinner.setValue(25);
+                flowFlattenAllowRefLocalsCheck.setSelected(false);
+
+                mangledJumpCheck.setSelected(false);
+                flowSwitchCheck.setSelected(false);
+                integerReturnCheck.setSelected(false);
+                exceptionReturnCheck.setSelected(false);
+                exceptionReturnPercentSpinner.setValue(25);
+
+                antiAiCheck.setSelected(false);
+                antiAiLevelSpinner.setValue(1);
+                antiAiConstPercentSpinner.setValue(35);
+                antiAiDecoySpinner.setValue(3);
+
+                antiDecompilerCheck.setSelected(false);
+                antiDecompilerLevelSpinner.setValue(1);
+
+                antiDeobfCheck.setSelected(false);
+                antiDeobfLevelSpinner.setValue(1);
+                antiDeobfBadSigCheck.setSelected(false);
+                antiDeobfBadClassSigCheck.setSelected(false);
+                antiDeobfPoisonAnnoCheck.setSelected(false);
+                antiDeobfPoisonInnerCheck.setSelected(false);
+                antiDeobfTrapRealCheck.setSelected(false);
+                antiDeobfHoneypotsCheck.setSelected(false);
+
+                antiDebugCheck.setSelected(false);
+                antiDebugCheckPercentSpinner.setValue(10);
+                antiDebugDetectorsSpinner.setValue(3);
+
+                fileCrasherCheck.setSelected(false);
+                runtimeIntegrityCheck.setSelected(false);
+
+                fieldIndirectionCheck.setSelected(false);
+                fieldIndirectionPercentSpinner.setValue(20);
+
+                fieldPackingCheck.setSelected(false);
+                fieldPackingMinFieldsSpinner.setValue(1);
+
+                semanticCoreCheck.setSelected(false);
+                semanticCorePercentSpinner.setValue(25);
+
+                semanticFabricCheck.setSelected(false);
+                semanticFabricPercentSpinner.setValue(25);
+
+                methodRelocationCheck.setSelected(false);
+                methodRelocPercentSpinner.setValue(25);
+
+                methodExtractionCheck.setSelected(false);
+                methodExtractPercentSpinner.setValue(25);
+
+                recordMetadataCheck.setSelected(false);
+                recordEraseIdentityCheck.setSelected(false);
+                recordDepthSpinner.setValue(6);
+
+                budgetsEnabledCheck.setSelected(true);
+                maxJarGrowthPercentSpinner.setValue(120);
+                jarGrowthBytesSpinner.setValue(65536);
+                maxClassGrowthPercentSpinner.setValue(10);
+                classGrowthAllowanceSpinner.setValue(4);
+                maxMethodGrowthPercentSpinner.setValue(35);
+                methodGrowthAllowanceSpinner.setValue(64);
+                maxInstructionGrowthPercentSpinner.setValue(150);
+                instructionGrowthAllowanceSpinner.setValue(1024);
+
+                coverageEnabledCheck.setSelected(false);
+            }
+            case "strong" -> {
+                sourceStripCheck.setSelected(true);
+                stripLineNumbersCheck.setSelected(true);
+                stripLocalVarsCheck.setSelected(true);
+                stripSignaturesCheck.setSelected(true);
+                keepSignaturesCheck.setSelected(false);
+
+                renameClassesCheck.setSelected(true);
+                renameMainCheck.setSelected(true);
+                classPrefixField.setText("a/");
+                classDepthSpinner.setValue(8);
+
+                renameMethodsCheck.setSelected(true);
+                renameMethodsPublicCheck.setSelected(true);
+                keepPublicMethodsCheck.setSelected(false);
+                renameMethodsVirtualCheck.setSelected(true);
+                keepVirtualMethodsCheck.setSelected(false);
+                methodDepthSpinner.setValue(8);
+
+                renameFieldsCheck.setSelected(true);
+                fieldDepthSpinner.setValue(8);
+
+                stringEncCheck.setSelected(true);
+                stringEncTypeCombo.setSelectedItem("POLYMORPHIC");
+
+                resourceRenamerCheck.setSelected(false);
+                resourceDepthSpinner.setValue(8);
+
+                releaseHardeningCheck.setSelected(true);
+                stripMavenCheck.setSelected(true);
+                stripFabricDescCheck.setSelected(true);
+
+                numberEncCheck.setSelected(true);
+                numberEncLayersSpinner.setValue(3);
+
+                safeControlFlowCheck.setSelected(false);
+                safeControlFlowLevelSpinner.setValue(2);
+
+                flowFlattenCheck.setSelected(true);
+                flowFlattenPercentSpinner.setValue(25);
+                flowFlattenAllowRefLocalsCheck.setSelected(false);
+
+                mangledJumpCheck.setSelected(false);
+                flowSwitchCheck.setSelected(false);
+                integerReturnCheck.setSelected(false);
+
+                exceptionReturnCheck.setSelected(true);
+                exceptionReturnPercentSpinner.setValue(25);
+
+                antiAiCheck.setSelected(true);
+                antiAiLevelSpinner.setValue(2);
+                antiAiConstPercentSpinner.setValue(35);
+                antiAiDecoySpinner.setValue(3);
+
+                antiDecompilerCheck.setSelected(true);
+                antiDecompilerLevelSpinner.setValue(3);
+
+                antiDeobfCheck.setSelected(true);
+                antiDeobfLevelSpinner.setValue(3);
+                antiDeobfBadSigCheck.setSelected(false);
+                antiDeobfBadClassSigCheck.setSelected(false);
+                antiDeobfPoisonAnnoCheck.setSelected(true);
+                antiDeobfPoisonInnerCheck.setSelected(true);
+                antiDeobfTrapRealCheck.setSelected(true);
+                antiDeobfHoneypotsCheck.setSelected(true);
+
+                antiDebugCheck.setSelected(true);
+                antiDebugCheckPercentSpinner.setValue(10);
+                antiDebugDetectorsSpinner.setValue(3);
+
+                fileCrasherCheck.setSelected(true);
+                runtimeIntegrityCheck.setSelected(false);
+
+                refHidingCheck.setSelected(true);
+                refHidingPercentSpinner.setValue(35);
+                refHidingBootstrapPoolSpinner.setValue(8);
+
+                fieldIndirectionCheck.setSelected(true);
+                fieldIndirectionPercentSpinner.setValue(30);
+
+                fieldPackingCheck.setSelected(true);
+                fieldPackingMinFieldsSpinner.setValue(1);
+
+                crossClassDispersionCheck.setSelected(true);
+                dispersionPercentSpinner.setValue(30);
+                dispersionSinksSpinner.setValue(8);
+                dispersionVariantsSpinner.setValue(1);
+                dispersionMaxHelpersSpinner.setValue(256);
+                dispersionMaxOpsSpinner.setValue(2048);
+
+                semanticCoreCheck.setSelected(true);
+                semanticCorePercentSpinner.setValue(30);
+                semanticCoreMinOpsSpinner.setValue(3);
+                semanticCoreMaxMethodsSpinner.setValue(32);
+
+                semanticFabricCheck.setSelected(true);
+                semanticFabricPercentSpinner.setValue(30);
+                semanticFabricMinOpsSpinner.setValue(3);
+                semanticFabricMaxMethodsSpinner.setValue(48);
+                semanticFabricCarriersSpinner.setValue(6);
+
+                methodRelocationCheck.setSelected(true);
+                methodRelocPercentSpinner.setValue(30);
+                methodRelocMaxMethodsSpinner.setValue(48);
+                methodRelocCarriersSpinner.setValue(8);
+                methodRelocMinInsnsSpinner.setValue(20);
+
+                methodExtractionCheck.setSelected(true);
+                methodExtractPercentSpinner.setValue(30);
+                methodExtractMaxMethodsSpinner.setValue(64);
+                methodExtractCarriersSpinner.setValue(8);
+                methodExtractMinInsnsSpinner.setValue(8);
+
+                recordMetadataCheck.setSelected(true);
+                recordEraseIdentityCheck.setSelected(true);
+                recordDepthSpinner.setValue(8);
+
+                budgetsEnabledCheck.setSelected(true);
+                maxJarGrowthPercentSpinner.setValue(400);
+                jarGrowthBytesSpinner.setValue(131072);
+                maxClassGrowthPercentSpinner.setValue(20);
+                classGrowthAllowanceSpinner.setValue(48);
+                maxMethodGrowthPercentSpinner.setValue(150);
+                methodGrowthAllowanceSpinner.setValue(1024);
+                maxInstructionGrowthPercentSpinner.setValue(500);
+                instructionGrowthAllowanceSpinner.setValue(30000);
+
+                coverageEnabledCheck.setSelected(false);
+            }
+            case "full" -> {
+                sourceStripCheck.setSelected(true);
+                stripLineNumbersCheck.setSelected(true);
+                stripLocalVarsCheck.setSelected(true);
+                stripSignaturesCheck.setSelected(true);
+                keepSignaturesCheck.setSelected(false);
+
+                renameClassesCheck.setSelected(true);
+                renameMainCheck.setSelected(true);
+                classPrefixField.setText("a/");
+                classDepthSpinner.setValue(8);
+
+                renameMethodsCheck.setSelected(true);
+                renameMethodsPublicCheck.setSelected(true);
+                keepPublicMethodsCheck.setSelected(false);
+                renameMethodsVirtualCheck.setSelected(true);
+                keepVirtualMethodsCheck.setSelected(false);
+                methodDepthSpinner.setValue(8);
+
+                renameFieldsCheck.setSelected(true);
+                fieldDepthSpinner.setValue(8);
+
+                stringEncCheck.setSelected(true);
+                stringEncTypeCombo.setSelectedItem("POLYMORPHIC");
+
+                resourceRenamerCheck.setSelected(false);
+                resourceDepthSpinner.setValue(8);
+
+                releaseHardeningCheck.setSelected(true);
+                stripMavenCheck.setSelected(true);
+                stripFabricDescCheck.setSelected(true);
+
+                numberEncCheck.setSelected(true);
+                numberEncLayersSpinner.setValue(5);
+
+                safeControlFlowCheck.setSelected(false);
+                safeControlFlowLevelSpinner.setValue(3);
+
+                flowFlattenCheck.setSelected(true);
+                flowFlattenPercentSpinner.setValue(100);
+                flowFlattenAllowRefLocalsCheck.setSelected(false);
+
+                mangledJumpCheck.setSelected(false);
+                flowSwitchCheck.setSelected(true);
+                integerReturnCheck.setSelected(true);
+
+                exceptionReturnCheck.setSelected(true);
+                exceptionReturnPercentSpinner.setValue(100);
+
+                antiAiCheck.setSelected(true);
+                antiAiLevelSpinner.setValue(3);
+                antiAiConstPercentSpinner.setValue(85);
+                antiAiDecoySpinner.setValue(8);
+
+                antiDecompilerCheck.setSelected(true);
+                antiDecompilerLevelSpinner.setValue(3);
+
+                antiDeobfCheck.setSelected(true);
+                antiDeobfLevelSpinner.setValue(3);
+                antiDeobfBadSigCheck.setSelected(false);
+                antiDeobfBadClassSigCheck.setSelected(false);
+                antiDeobfPoisonAnnoCheck.setSelected(true);
+                antiDeobfPoisonInnerCheck.setSelected(true);
+                antiDeobfTrapRealCheck.setSelected(true);
+                antiDeobfHoneypotsCheck.setSelected(true);
+
+                antiDebugCheck.setSelected(true);
+                antiDebugCheckPercentSpinner.setValue(50);
+                antiDebugDetectorsSpinner.setValue(6);
+
+                fileCrasherCheck.setSelected(true);
+                runtimeIntegrityCheck.setSelected(false);
+
+                refHidingCheck.setSelected(true);
+                refHidingPercentSpinner.setValue(100);
+                refHidingBootstrapPoolSpinner.setValue(8);
+
+                fieldIndirectionCheck.setSelected(true);
+                fieldIndirectionPercentSpinner.setValue(100);
+
+                fieldPackingCheck.setSelected(true);
+                fieldPackingMinFieldsSpinner.setValue(1);
+
+                crossClassDispersionCheck.setSelected(true);
+                dispersionPercentSpinner.setValue(75);
+                dispersionSinksSpinner.setValue(24);
+                dispersionVariantsSpinner.setValue(2);
+                dispersionMaxHelpersSpinner.setValue(2048);
+                dispersionMaxOpsSpinner.setValue(8192);
+
+                semanticCoreCheck.setSelected(true);
+                semanticCorePercentSpinner.setValue(45);
+                semanticCoreMinOpsSpinner.setValue(3);
+                semanticCoreMaxMethodsSpinner.setValue(64);
+
+                semanticFabricCheck.setSelected(true);
+                semanticFabricPercentSpinner.setValue(100);
+                semanticFabricMinOpsSpinner.setValue(3);
+                semanticFabricMaxMethodsSpinner.setValue(96);
+                semanticFabricCarriersSpinner.setValue(12);
+
+                methodRelocationCheck.setSelected(true);
+                methodRelocPercentSpinner.setValue(85);
+                methodRelocMaxMethodsSpinner.setValue(128);
+                methodRelocCarriersSpinner.setValue(16);
+                methodRelocMinInsnsSpinner.setValue(20);
+
+                methodExtractionCheck.setSelected(true);
+                methodExtractPercentSpinner.setValue(100);
+                methodExtractMaxMethodsSpinner.setValue(160);
+                methodExtractCarriersSpinner.setValue(16);
+                methodExtractMinInsnsSpinner.setValue(8);
+
+                recordMetadataCheck.setSelected(true);
+                recordEraseIdentityCheck.setSelected(true);
+                recordDepthSpinner.setValue(8);
+
+                budgetsEnabledCheck.setSelected(false);
+                maxJarGrowthPercentSpinner.setValue(-1);
+                jarGrowthBytesSpinner.setValue(131072);
+                maxClassGrowthPercentSpinner.setValue(20);
+                classGrowthAllowanceSpinner.setValue(48);
+                maxMethodGrowthPercentSpinner.setValue(150);
+                methodGrowthAllowanceSpinner.setValue(1024);
+                maxInstructionGrowthPercentSpinner.setValue(500);
+                instructionGrowthAllowanceSpinner.setValue(30000);
+
+                coverageEnabledCheck.setSelected(false);
+            }
+        }
+    }
+
     private void applyProfileDefaults() {
         int index = profileCombo.getSelectedIndex();
         switch (index) {
@@ -1282,35 +2329,280 @@ public final class NullfuscatorFrame extends JFrame {
         dialog.setVisible(true);
     }
 
+    private static List<String> parseCommaOrLineSeparated(String raw) {
+        List<String> list = new ArrayList<>();
+        if (raw == null || raw.isBlank()) return list;
+        for (String part : raw.split("[,\\n\\r]+")) {
+            String s = part.trim();
+            if (!s.isEmpty() && !s.startsWith("#")) {
+                list.add(s);
+            }
+        }
+        return list;
+    }
+
+    private static String joinQuotedHocon(List<String> list) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < list.size(); i++) {
+            sb.append("\"").append(escapeHocon(list.get(i))).append("\"");
+            if (i < list.size() - 1) sb.append(", ");
+        }
+        return sb.toString();
+    }
+
+    private static String escapeHocon(String s) {
+        if (s == null) return "";
+        return s.replace("\\", "\\\\").replace("\"", "\\\"");
+    }
+
     private String buildHoconConfig(String basePreset) {
         StringBuilder sb = new StringBuilder();
         sb.append("baseConfig = \"").append(basePreset).append(".hocon\"\n\n");
 
         sb.append("compatibility {\n");
-        sb.append("  allowMultiReleaseRename: true\n");
+        sb.append("  allowMultiReleaseRename: ").append(allowMultiReleaseCheck.isSelected()).append("\n");
         sb.append("  allowIncompleteClasspath: ").append(allowIncompleteClasspathCheck.isSelected()).append("\n");
         sb.append("}\n\n");
 
+        if (budgetsEnabledCheck.isSelected()) {
+            sb.append("budgets {\n");
+            sb.append("  maxJarGrowthPercent: ").append(maxJarGrowthPercentSpinner.getValue()).append("\n");
+            sb.append("  jarGrowthAllowanceBytes: ").append(jarGrowthBytesSpinner.getValue()).append("\n");
+            sb.append("  maxClassGrowthPercent: ").append(maxClassGrowthPercentSpinner.getValue()).append("\n");
+            sb.append("  classGrowthAllowance: ").append(classGrowthAllowanceSpinner.getValue()).append("\n");
+            sb.append("  maxMethodGrowthPercent: ").append(maxMethodGrowthPercentSpinner.getValue()).append("\n");
+            sb.append("  methodGrowthAllowance: ").append(methodGrowthAllowanceSpinner.getValue()).append("\n");
+            sb.append("  maxInstructionGrowthPercent: ").append(maxInstructionGrowthPercentSpinner.getValue()).append("\n");
+            sb.append("  instructionGrowthAllowance: ").append(instructionGrowthAllowanceSpinner.getValue()).append("\n");
+            sb.append("}\n\n");
+        } else {
+            sb.append("budgets {\n");
+            sb.append("  maxJarGrowthPercent: -1\n");
+            sb.append("  maxClassGrowthPercent: -1\n");
+            sb.append("  maxMethodGrowthPercent: -1\n");
+            sb.append("  maxInstructionGrowthPercent: -1\n");
+            sb.append("}\n\n");
+        }
+
+        if (coverageEnabledCheck.isSelected()) {
+            sb.append("coverage {\n");
+            sb.append("  minPercent: ").append(coverageMinPercentSpinner.getValue()).append("\n");
+            List<String> req = parseCommaOrLineSeparated(coverageRequiredField.getText());
+            if (!req.isEmpty()) {
+                sb.append("  required: [ ").append(joinQuotedHocon(req)).append(" ]\n");
+            }
+            sb.append("}\n\n");
+        }
+
+        List<String> hotPaths = parseCommaOrLineSeparated(hotPathsArea.getText());
+        if (!hotPaths.isEmpty()) {
+            sb.append("hotPaths.exclude = [\n");
+            for (int i = 0; i < hotPaths.size(); i++) {
+                sb.append("  \"").append(escapeHocon(hotPaths.get(i))).append("\"");
+                if (i < hotPaths.size() - 1) sb.append(",");
+                sb.append("\n");
+            }
+            sb.append("]\n\n");
+        }
+
+        List<String> alphabet = parseCommaOrLineSeparated(namingAlphabetField.getText());
+        if (!alphabet.isEmpty()) {
+            sb.append("defaults.naming {\n");
+            sb.append("  chars: [ ").append(joinQuotedHocon(alphabet)).append(" ]\n");
+            sb.append("}\n\n");
+        }
+
         sb.append("sourceStrip {\n");
-        sb.append("  stripSignatures: ").append(!keepSignaturesCheck.isSelected()).append("\n");
+        sb.append("  enabled: ").append(sourceStripCheck.isSelected()).append("\n");
+        sb.append("  stripLineNumbers: ").append(stripLineNumbersCheck.isSelected()).append("\n");
+        sb.append("  stripLocalVars: ").append(stripLocalVarsCheck.isSelected()).append("\n");
+        sb.append("  stripSignatures: ").append(stripSignaturesCheck.isSelected()).append("\n");
         sb.append("}\n\n");
 
-        sb.append("resourceRenamer.enabled = ").append(resourceRenamerCheck.isSelected()).append("\n");
-        sb.append("stringEncryption.enabled = ").append(stringEncCheck.isSelected()).append("\n");
-        sb.append("numberEncryption.enabled = ").append(numberEncCheck.isSelected()).append("\n");
-        sb.append("flatten.enabled = ").append(flowFlattenCheck.isSelected()).append("\n");
-        sb.append("antiDecompiler.enabled = ").append(antiDecompilerCheck.isSelected()).append("\n");
-        sb.append("antiDeobf.enabled = ").append(antiDeobfCheck.isSelected()).append("\n");
-        sb.append("antiAI.enabled = ").append(antiAiCheck.isSelected()).append("\n");
-        sb.append("antiDebug.enabled = ").append(antiDebugCheck.isSelected()).append("\n");
-        sb.append("classRenamer.enabled = ").append(renameClassesCheck.isSelected()).append("\n");
-        sb.append("fieldRenamer.enabled = ").append(renameFieldsCheck.isSelected()).append("\n");
+        sb.append("releaseHardening {\n");
+        sb.append("  enabled: ").append(releaseHardeningCheck.isSelected()).append("\n");
+        sb.append("  stripMavenMetadata: ").append(stripMavenCheck.isSelected()).append("\n");
+        sb.append("  stripFabricDescription: ").append(stripFabricDescCheck.isSelected()).append("\n");
+        sb.append("}\n\n");
+
+        sb.append("stringEncryption {\n");
+        sb.append("  enabled: ").append(stringEncCheck.isSelected()).append("\n");
+        sb.append("  type: ").append(stringEncTypeCombo.getSelectedItem()).append("\n");
+        sb.append("}\n\n");
+
+        sb.append("numberEncryption {\n");
+        sb.append("  enabled: ").append(numberEncCheck.isSelected()).append("\n");
+        sb.append("  layers: ").append(numberEncLayersSpinner.getValue()).append("\n");
+        sb.append("}\n\n");
+
+        sb.append("safeControlFlow {\n");
+        sb.append("  enabled: ").append(safeControlFlowCheck.isSelected()).append("\n");
+        sb.append("  level: ").append(safeControlFlowLevelSpinner.getValue()).append("\n");
+        sb.append("}\n\n");
+
+        sb.append("flatten {\n");
+        sb.append("  enabled: ").append(flowFlattenCheck.isSelected()).append("\n");
+        sb.append("  percent: ").append(flowFlattenPercentSpinner.getValue()).append("\n");
+        sb.append("  allowReferenceLocals: ").append(flowFlattenAllowRefLocalsCheck.isSelected()).append("\n");
+        sb.append("}\n\n");
+
+        sb.append("mangledJump.enabled = ").append(mangledJumpCheck.isSelected()).append("\n");
+        sb.append("flowSwitch.enabled = ").append(flowSwitchCheck.isSelected()).append("\n");
+        sb.append("integerReturn.enabled = ").append(integerReturnCheck.isSelected()).append("\n");
+
+        sb.append("exceptionReturn {\n");
+        sb.append("  enabled: ").append(exceptionReturnCheck.isSelected()).append("\n");
+        sb.append("  percent: ").append(exceptionReturnPercentSpinner.getValue()).append("\n");
+        sb.append("}\n\n");
+
+        sb.append("antiAI {\n");
+        sb.append("  enabled: ").append(antiAiCheck.isSelected()).append("\n");
+        sb.append("  level: ").append(antiAiLevelSpinner.getValue()).append("\n");
+        sb.append("  decoyMethods: ").append(antiAiDecoySpinner.getValue()).append("\n");
+        sb.append("  constantEncodingPercent: ").append(antiAiConstPercentSpinner.getValue()).append("\n");
+        sb.append("}\n\n");
+
+        sb.append("antiDecompiler {\n");
+        sb.append("  enabled: ").append(antiDecompilerCheck.isSelected()).append("\n");
+        sb.append("  level: ").append(antiDecompilerLevelSpinner.getValue()).append("\n");
+        sb.append("}\n\n");
+
+        sb.append("antiDeobf {\n");
+        sb.append("  enabled: ").append(antiDeobfCheck.isSelected()).append("\n");
+        sb.append("  level: ").append(antiDeobfLevelSpinner.getValue()).append("\n");
+        sb.append("  badSignatures: ").append(antiDeobfBadSigCheck.isSelected()).append("\n");
+        sb.append("  badRealClassSignatures: ").append(antiDeobfBadClassSigCheck.isSelected()).append("\n");
+        sb.append("  poisonAnnotations: ").append(antiDeobfPoisonAnnoCheck.isSelected()).append("\n");
+        sb.append("  poisonInnerClasses: ").append(antiDeobfPoisonInnerCheck.isSelected()).append("\n");
+        sb.append("  trapRealMethods: ").append(antiDeobfTrapRealCheck.isSelected()).append("\n");
+        sb.append("  honeypotEvaluators: ").append(antiDeobfHoneypotsCheck.isSelected()).append("\n");
+        sb.append("}\n\n");
+
+        sb.append("antiDebug {\n");
+        sb.append("  enabled: ").append(antiDebugCheck.isSelected()).append("\n");
+        sb.append("  checkPercent: ").append(antiDebugCheckPercentSpinner.getValue()).append("\n");
+        sb.append("  detectors: ").append(antiDebugDetectorsSpinner.getValue()).append("\n");
+        sb.append("}\n\n");
+
+        sb.append("fileCrasher.enabled = ").append(fileCrasherCheck.isSelected()).append("\n");
+
+        if (runtimeIntegrityCheck.isSelected()) {
+            sb.append("runtimeIntegrity {\n");
+            sb.append("  enabled: true\n");
+            List<String> inc = parseCommaOrLineSeparated(runtimeIntegrityIncludeField.getText());
+            if (!inc.isEmpty()) {
+                sb.append("  include: [ ").append(joinQuotedHocon(inc)).append(" ]\n");
+            }
+            sb.append("}\n\n");
+        } else {
+            sb.append("runtimeIntegrity.enabled = false\n\n");
+        }
+
+        sb.append("classRenamer {\n");
+        sb.append("  enabled: ").append(renameClassesCheck.isSelected()).append("\n");
+        sb.append("  renameMain: ").append(renameMainCheck.isSelected()).append("\n");
+        sb.append("  prefix: \"").append(escapeHocon(classPrefixField.getText().trim())).append("\"\n");
+        sb.append("  depth: ").append(classDepthSpinner.getValue()).append("\n");
+        sb.append("}\n\n");
 
         sb.append("methodRenamer {\n");
         sb.append("  enabled: ").append(renameMethodsCheck.isSelected()).append("\n");
-        sb.append("  renamePublic: ").append(!keepPublicMethodsCheck.isSelected()).append("\n");
-        sb.append("  renameVirtual: ").append(!keepVirtualMethodsCheck.isSelected()).append("\n");
+        sb.append("  renamePublic: ").append(renameMethodsPublicCheck.isSelected()).append("\n");
+        sb.append("  renameVirtual: ").append(renameMethodsVirtualCheck.isSelected()).append("\n");
+        sb.append("  depth: ").append(methodDepthSpinner.getValue()).append("\n");
         sb.append("}\n\n");
+
+        sb.append("fieldRenamer {\n");
+        sb.append("  enabled: ").append(renameFieldsCheck.isSelected()).append("\n");
+        sb.append("  depth: ").append(fieldDepthSpinner.getValue()).append("\n");
+        sb.append("}\n\n");
+
+        sb.append("recordMetadata {\n");
+        sb.append("  enabled: ").append(recordMetadataCheck.isSelected()).append("\n");
+        sb.append("  eraseIdentity: ").append(recordEraseIdentityCheck.isSelected()).append("\n");
+        sb.append("  depth: ").append(recordDepthSpinner.getValue()).append("\n");
+        sb.append("}\n\n");
+
+        sb.append("resourceRenamer {\n");
+        sb.append("  enabled: ").append(resourceRenamerCheck.isSelected()).append("\n");
+        sb.append("  depth: ").append(resourceDepthSpinner.getValue()).append("\n");
+        List<String> resNs = parseCommaOrLineSeparated(resourceExcludeNsField.getText());
+        if (!resNs.isEmpty()) {
+            sb.append("  excludeNamespaces: [ ").append(joinQuotedHocon(resNs)).append(" ]\n");
+        }
+        List<String> resDirs = parseCommaOrLineSeparated(resourceExcludeDirsField.getText());
+        if (!resDirs.isEmpty()) {
+            sb.append("  excludeDirectories: [ ").append(joinQuotedHocon(resDirs)).append(" ]\n");
+        }
+        sb.append("}\n\n");
+
+        sb.append("fieldPacking {\n");
+        sb.append("  enabled: ").append(fieldPackingCheck.isSelected()).append("\n");
+        sb.append("  minFields: ").append(fieldPackingMinFieldsSpinner.getValue()).append("\n");
+        sb.append("}\n\n");
+
+        sb.append("fieldIndirection {\n");
+        sb.append("  enabled: ").append(fieldIndirectionCheck.isSelected()).append("\n");
+        sb.append("  percent: ").append(fieldIndirectionPercentSpinner.getValue()).append("\n");
+        sb.append("}\n\n");
+
+        sb.append("referenceHiding {\n");
+        sb.append("  enabled: ").append(refHidingCheck.isSelected()).append("\n");
+        sb.append("  hidePercent: ").append(refHidingPercentSpinner.getValue()).append("\n");
+        sb.append("  bootstrapPoolSize: ").append(refHidingBootstrapPoolSpinner.getValue()).append("\n");
+        sb.append("}\n\n");
+
+        sb.append("crossClassDispersion {\n");
+        sb.append("  enabled: ").append(crossClassDispersionCheck.isSelected()).append("\n");
+        sb.append("  dispersalPercent: ").append(dispersionPercentSpinner.getValue()).append("\n");
+        sb.append("  sinks: ").append(dispersionSinksSpinner.getValue()).append("\n");
+        sb.append("  variantsPerOpcode: ").append(dispersionVariantsSpinner.getValue()).append("\n");
+        sb.append("  maxHelpers: ").append(dispersionMaxHelpersSpinner.getValue()).append("\n");
+        sb.append("  maxOperations: ").append(dispersionMaxOpsSpinner.getValue()).append("\n");
+        sb.append("}\n\n");
+
+        sb.append("semanticCore {\n");
+        sb.append("  enabled: ").append(semanticCoreCheck.isSelected()).append("\n");
+        sb.append("  percent: ").append(semanticCorePercentSpinner.getValue()).append("\n");
+        sb.append("  minOperations: ").append(semanticCoreMinOpsSpinner.getValue()).append("\n");
+        sb.append("  maxMethods: ").append(semanticCoreMaxMethodsSpinner.getValue()).append("\n");
+        sb.append("}\n\n");
+
+        sb.append("semanticFabric {\n");
+        sb.append("  enabled: ").append(semanticFabricCheck.isSelected()).append("\n");
+        sb.append("  percent: ").append(semanticFabricPercentSpinner.getValue()).append("\n");
+        sb.append("  minArithmeticOps: ").append(semanticFabricMinOpsSpinner.getValue()).append("\n");
+        sb.append("  maxMethods: ").append(semanticFabricMaxMethodsSpinner.getValue()).append("\n");
+        sb.append("  carriers: ").append(semanticFabricCarriersSpinner.getValue()).append("\n");
+        sb.append("}\n\n");
+
+        sb.append("methodRelocation {\n");
+        sb.append("  enabled: ").append(methodRelocationCheck.isSelected()).append("\n");
+        sb.append("  percent: ").append(methodRelocPercentSpinner.getValue()).append("\n");
+        sb.append("  maxMethods: ").append(methodRelocMaxMethodsSpinner.getValue()).append("\n");
+        sb.append("  carriers: ").append(methodRelocCarriersSpinner.getValue()).append("\n");
+        sb.append("  minInstructions: ").append(methodRelocMinInsnsSpinner.getValue()).append("\n");
+        sb.append("}\n\n");
+
+        sb.append("methodExtraction {\n");
+        sb.append("  enabled: ").append(methodExtractionCheck.isSelected()).append("\n");
+        sb.append("  percent: ").append(methodExtractPercentSpinner.getValue()).append("\n");
+        sb.append("  maxMethods: ").append(methodExtractMaxMethodsSpinner.getValue()).append("\n");
+        sb.append("  carriers: ").append(methodExtractCarriersSpinner.getValue()).append("\n");
+        sb.append("  minInstructions: ").append(methodExtractMinInsnsSpinner.getValue()).append("\n");
+        sb.append("}\n\n");
+
+        if (annotationSanitizerCheck.isSelected()) {
+            sb.append("annotationSanitizer {\n");
+            sb.append("  enabled: true\n");
+            List<String> descs = parseCommaOrLineSeparated(annotationSanitizerDescriptorsField.getText());
+            if (!descs.isEmpty()) {
+                sb.append("  descriptors: [ ").append(joinQuotedHocon(descs)).append(" ]\n");
+            }
+            sb.append("}\n\n");
+        } else {
+            sb.append("annotationSanitizer.enabled = false\n\n");
+        }
 
         List<String> exemptions = new ArrayList<>();
         if (exemptMixinsCheck.isSelected()) {
@@ -1689,18 +2981,168 @@ public final class NullfuscatorFrame extends JFrame {
         });
     }
 
+    private void putSpinner(String key, JSpinner sp) {
+        Object val = sp.getValue();
+        if (val instanceof Number n) {
+            prefs.putInt(key, n.intValue());
+        }
+    }
+
+    private void getSpinner(String key, JSpinner sp) {
+        Object val = sp.getValue();
+        int def = (val instanceof Number n) ? n.intValue() : 0;
+        int v = prefs.getInt(key, def);
+        sp.setValue(v);
+    }
+
     private void savePreferences() {
         try {
             prefs.put(PREF_PRESET, (String) presetCombo.getSelectedItem());
             prefs.putInt(PREF_PROFILE, profileCombo.getSelectedIndex());
             prefs.put(PREF_EXEMPTIONS, exemptionsArea.getText());
+            prefs.put("pref_hot_paths", hotPathsArea.getText());
             prefs.put(PREF_SEED, seedField.getText().trim());
             prefs.putBoolean(PREF_KEEP_PUBLIC, keepPublicMethodsCheck.isSelected());
             prefs.putBoolean(PREF_KEEP_VIRTUAL, keepVirtualMethodsCheck.isSelected());
             prefs.putBoolean(PREF_KEEP_SIGNATURES, keepSignaturesCheck.isSelected());
             prefs.putBoolean(PREF_EXEMPT_MIXINS, exemptMixinsCheck.isSelected());
             prefs.putBoolean(PREF_ALLOW_INCOMPLETE, allowIncompleteClasspathCheck.isSelected());
+            prefs.putBoolean("pref_allow_multi_release", allowMultiReleaseCheck.isSelected());
             prefs.putBoolean(PREF_SAVE_MAPPING, saveMappingCheck.isSelected());
+
+            prefs.putBoolean("budgets_enabled", budgetsEnabledCheck.isSelected());
+            putSpinner("budget_max_jar_pct", maxJarGrowthPercentSpinner);
+            putSpinner("budget_jar_bytes", jarGrowthBytesSpinner);
+            putSpinner("budget_max_cls_pct", maxClassGrowthPercentSpinner);
+            putSpinner("budget_cls_allowance", classGrowthAllowanceSpinner);
+            putSpinner("budget_max_mtd_pct", maxMethodGrowthPercentSpinner);
+            putSpinner("budget_mtd_allowance", methodGrowthAllowanceSpinner);
+            putSpinner("budget_max_insn_pct", maxInstructionGrowthPercentSpinner);
+            putSpinner("budget_insn_allowance", instructionGrowthAllowanceSpinner);
+
+            prefs.putBoolean("coverage_enabled", coverageEnabledCheck.isSelected());
+            putSpinner("coverage_min_pct", coverageMinPercentSpinner);
+            prefs.put("coverage_required", coverageRequiredField.getText());
+
+            prefs.putBoolean("anti_ai_enabled", antiAiCheck.isSelected());
+            putSpinner("anti_ai_level", antiAiLevelSpinner);
+            putSpinner("anti_ai_const_pct", antiAiConstPercentSpinner);
+            putSpinner("anti_ai_decoys", antiAiDecoySpinner);
+
+            prefs.putBoolean("anti_decomp_enabled", antiDecompilerCheck.isSelected());
+            putSpinner("anti_decomp_level", antiDecompilerLevelSpinner);
+
+            prefs.putBoolean("anti_deobf_enabled", antiDeobfCheck.isSelected());
+            putSpinner("anti_deobf_level", antiDeobfLevelSpinner);
+            prefs.putBoolean("anti_deobf_bad_sig", antiDeobfBadSigCheck.isSelected());
+            prefs.putBoolean("anti_deobf_bad_cls_sig", antiDeobfBadClassSigCheck.isSelected());
+            prefs.putBoolean("anti_deobf_poison_anno", antiDeobfPoisonAnnoCheck.isSelected());
+            prefs.putBoolean("anti_deobf_poison_inner", antiDeobfPoisonInnerCheck.isSelected());
+            prefs.putBoolean("anti_deobf_trap_real", antiDeobfTrapRealCheck.isSelected());
+            prefs.putBoolean("anti_deobf_honeypots", antiDeobfHoneypotsCheck.isSelected());
+
+            prefs.putBoolean("anti_debug_enabled", antiDebugCheck.isSelected());
+            putSpinner("anti_debug_pct", antiDebugCheckPercentSpinner);
+            putSpinner("anti_debug_detectors", antiDebugDetectorsSpinner);
+
+            prefs.putBoolean("file_crasher_enabled", fileCrasherCheck.isSelected());
+            prefs.putBoolean("runtime_integrity_enabled", runtimeIntegrityCheck.isSelected());
+            prefs.put("runtime_integrity_include", runtimeIntegrityIncludeField.getText());
+
+            prefs.putBoolean("flow_flatten_enabled", flowFlattenCheck.isSelected());
+            putSpinner("flow_flatten_pct", flowFlattenPercentSpinner);
+            prefs.putBoolean("flow_flatten_ref_locals", flowFlattenAllowRefLocalsCheck.isSelected());
+
+            prefs.putBoolean("safe_cf_enabled", safeControlFlowCheck.isSelected());
+            putSpinner("safe_cf_level", safeControlFlowLevelSpinner);
+
+            prefs.putBoolean("mangled_jump_enabled", mangledJumpCheck.isSelected());
+            prefs.putBoolean("flow_switch_enabled", flowSwitchCheck.isSelected());
+            prefs.putBoolean("int_return_enabled", integerReturnCheck.isSelected());
+            prefs.putBoolean("exception_return_enabled", exceptionReturnCheck.isSelected());
+            putSpinner("exception_return_pct", exceptionReturnPercentSpinner);
+
+            prefs.putBoolean("string_enc_enabled", stringEncCheck.isSelected());
+            prefs.put("string_enc_type", (String) stringEncTypeCombo.getSelectedItem());
+
+            prefs.putBoolean("num_enc_enabled", numberEncCheck.isSelected());
+            putSpinner("num_enc_layers", numberEncLayersSpinner);
+
+            prefs.putBoolean("ref_hiding_enabled", refHidingCheck.isSelected());
+            putSpinner("ref_hiding_pct", refHidingPercentSpinner);
+            putSpinner("ref_hiding_pool", refHidingBootstrapPoolSpinner);
+
+            prefs.putBoolean("field_indir_enabled", fieldIndirectionCheck.isSelected());
+            putSpinner("field_indir_pct", fieldIndirectionPercentSpinner);
+
+            prefs.putBoolean("field_pack_enabled", fieldPackingCheck.isSelected());
+            putSpinner("field_pack_min", fieldPackingMinFieldsSpinner);
+
+            prefs.putBoolean("dispersion_enabled", crossClassDispersionCheck.isSelected());
+            putSpinner("dispersion_pct", dispersionPercentSpinner);
+            putSpinner("dispersion_sinks", dispersionSinksSpinner);
+            putSpinner("dispersion_variants", dispersionVariantsSpinner);
+            putSpinner("dispersion_max_helpers", dispersionMaxHelpersSpinner);
+            putSpinner("dispersion_max_ops", dispersionMaxOpsSpinner);
+
+            prefs.putBoolean("sem_core_enabled", semanticCoreCheck.isSelected());
+            putSpinner("sem_core_pct", semanticCorePercentSpinner);
+            putSpinner("sem_core_min_ops", semanticCoreMinOpsSpinner);
+            putSpinner("sem_core_max_mtd", semanticCoreMaxMethodsSpinner);
+
+            prefs.putBoolean("sem_fab_enabled", semanticFabricCheck.isSelected());
+            putSpinner("sem_fab_pct", semanticFabricPercentSpinner);
+            putSpinner("sem_fab_min_ops", semanticFabricMinOpsSpinner);
+            putSpinner("sem_fab_max_mtd", semanticFabricMaxMethodsSpinner);
+            putSpinner("sem_fab_carriers", semanticFabricCarriersSpinner);
+
+            prefs.putBoolean("mtd_reloc_enabled", methodRelocationCheck.isSelected());
+            putSpinner("mtd_reloc_pct", methodRelocPercentSpinner);
+            putSpinner("mtd_reloc_max_mtd", methodRelocMaxMethodsSpinner);
+            putSpinner("mtd_reloc_carriers", methodRelocCarriersSpinner);
+            putSpinner("mtd_reloc_min_insns", methodRelocMinInsnsSpinner);
+
+            prefs.putBoolean("mtd_extract_enabled", methodExtractionCheck.isSelected());
+            putSpinner("mtd_extract_pct", methodExtractPercentSpinner);
+            putSpinner("mtd_extract_max_mtd", methodExtractMaxMethodsSpinner);
+            putSpinner("mtd_extract_carriers", methodExtractCarriersSpinner);
+            putSpinner("mtd_extract_min_insns", methodExtractMinInsnsSpinner);
+
+            prefs.putBoolean("rename_cls_enabled", renameClassesCheck.isSelected());
+            prefs.put("rename_cls_prefix", classPrefixField.getText());
+            putSpinner("rename_cls_depth", classDepthSpinner);
+            prefs.putBoolean("rename_cls_main", renameMainCheck.isSelected());
+
+            prefs.putBoolean("rename_mtd_enabled", renameMethodsCheck.isSelected());
+            prefs.putBoolean("rename_mtd_public", renameMethodsPublicCheck.isSelected());
+            prefs.putBoolean("rename_mtd_virtual", renameMethodsVirtualCheck.isSelected());
+            putSpinner("rename_mtd_depth", methodDepthSpinner);
+
+            prefs.putBoolean("rename_fld_enabled", renameFieldsCheck.isSelected());
+            putSpinner("rename_fld_depth", fieldDepthSpinner);
+
+            prefs.put("naming_alphabet", namingAlphabetField.getText());
+
+            prefs.putBoolean("record_meta_enabled", recordMetadataCheck.isSelected());
+            prefs.putBoolean("record_erase_id", recordEraseIdentityCheck.isSelected());
+            putSpinner("record_depth", recordDepthSpinner);
+
+            prefs.putBoolean("res_renamer_enabled", resourceRenamerCheck.isSelected());
+            putSpinner("res_renamer_depth", resourceDepthSpinner);
+            prefs.put("res_renamer_exclude_ns", resourceExcludeNsField.getText());
+            prefs.put("res_renamer_exclude_dirs", resourceExcludeDirsField.getText());
+
+            prefs.putBoolean("src_strip_enabled", sourceStripCheck.isSelected());
+            prefs.putBoolean("strip_line_nums", stripLineNumbersCheck.isSelected());
+            prefs.putBoolean("strip_local_vars", stripLocalVarsCheck.isSelected());
+            prefs.putBoolean("strip_sigs", stripSignaturesCheck.isSelected());
+
+            prefs.putBoolean("rel_hard_enabled", releaseHardeningCheck.isSelected());
+            prefs.putBoolean("strip_maven", stripMavenCheck.isSelected());
+            prefs.putBoolean("strip_fabric_desc", stripFabricDescCheck.isSelected());
+
+            prefs.putBoolean("anno_sanitizer_enabled", annotationSanitizerCheck.isSelected());
+            prefs.put("anno_sanitizer_descs", annotationSanitizerDescriptorsField.getText());
 
             List<String> libs = new ArrayList<>();
             for (int i = 0; i < libsModel.size(); i++) {
@@ -1722,6 +3164,8 @@ public final class NullfuscatorFrame extends JFrame {
             String ex = prefs.get(PREF_EXEMPTIONS, "");
             exemptionsArea.setText(ex);
 
+            hotPathsArea.setText(prefs.get("pref_hot_paths", ""));
+
             seedField.setText(prefs.get(PREF_SEED, ""));
 
             keepPublicMethodsCheck.setSelected(prefs.getBoolean(PREF_KEEP_PUBLIC, false));
@@ -1729,7 +3173,143 @@ public final class NullfuscatorFrame extends JFrame {
             keepSignaturesCheck.setSelected(prefs.getBoolean(PREF_KEEP_SIGNATURES, false));
             exemptMixinsCheck.setSelected(prefs.getBoolean(PREF_EXEMPT_MIXINS, false));
             allowIncompleteClasspathCheck.setSelected(prefs.getBoolean(PREF_ALLOW_INCOMPLETE, true));
+            allowMultiReleaseCheck.setSelected(prefs.getBoolean("pref_allow_multi_release", true));
             saveMappingCheck.setSelected(prefs.getBoolean(PREF_SAVE_MAPPING, false));
+
+            budgetsEnabledCheck.setSelected(prefs.getBoolean("budgets_enabled", budgetsEnabledCheck.isSelected()));
+            getSpinner("budget_max_jar_pct", maxJarGrowthPercentSpinner);
+            getSpinner("budget_jar_bytes", jarGrowthBytesSpinner);
+            getSpinner("budget_max_cls_pct", maxClassGrowthPercentSpinner);
+            getSpinner("budget_cls_allowance", classGrowthAllowanceSpinner);
+            getSpinner("budget_max_mtd_pct", maxMethodGrowthPercentSpinner);
+            getSpinner("budget_mtd_allowance", methodGrowthAllowanceSpinner);
+            getSpinner("budget_max_insn_pct", maxInstructionGrowthPercentSpinner);
+            getSpinner("budget_insn_allowance", instructionGrowthAllowanceSpinner);
+
+            coverageEnabledCheck.setSelected(prefs.getBoolean("coverage_enabled", coverageEnabledCheck.isSelected()));
+            getSpinner("coverage_min_pct", coverageMinPercentSpinner);
+            coverageRequiredField.setText(prefs.get("coverage_required", coverageRequiredField.getText()));
+
+            antiAiCheck.setSelected(prefs.getBoolean("anti_ai_enabled", antiAiCheck.isSelected()));
+            getSpinner("anti_ai_level", antiAiLevelSpinner);
+            getSpinner("anti_ai_const_pct", antiAiConstPercentSpinner);
+            getSpinner("anti_ai_decoys", antiAiDecoySpinner);
+
+            antiDecompilerCheck.setSelected(prefs.getBoolean("anti_decomp_enabled", antiDecompilerCheck.isSelected()));
+            getSpinner("anti_decomp_level", antiDecompilerLevelSpinner);
+
+            antiDeobfCheck.setSelected(prefs.getBoolean("anti_deobf_enabled", antiDeobfCheck.isSelected()));
+            getSpinner("anti_deobf_level", antiDeobfLevelSpinner);
+            antiDeobfBadSigCheck.setSelected(prefs.getBoolean("anti_deobf_bad_sig", antiDeobfBadSigCheck.isSelected()));
+            antiDeobfBadClassSigCheck.setSelected(prefs.getBoolean("anti_deobf_bad_cls_sig", antiDeobfBadClassSigCheck.isSelected()));
+            antiDeobfPoisonAnnoCheck.setSelected(prefs.getBoolean("anti_deobf_poison_anno", antiDeobfPoisonAnnoCheck.isSelected()));
+            antiDeobfPoisonInnerCheck.setSelected(prefs.getBoolean("anti_deobf_poison_inner", antiDeobfPoisonInnerCheck.isSelected()));
+            antiDeobfTrapRealCheck.setSelected(prefs.getBoolean("anti_deobf_trap_real", antiDeobfTrapRealCheck.isSelected()));
+            antiDeobfHoneypotsCheck.setSelected(prefs.getBoolean("anti_deobf_honeypots", antiDeobfHoneypotsCheck.isSelected()));
+
+            antiDebugCheck.setSelected(prefs.getBoolean("anti_debug_enabled", antiDebugCheck.isSelected()));
+            getSpinner("anti_debug_pct", antiDebugCheckPercentSpinner);
+            getSpinner("anti_debug_detectors", antiDebugDetectorsSpinner);
+
+            fileCrasherCheck.setSelected(prefs.getBoolean("file_crasher_enabled", fileCrasherCheck.isSelected()));
+            runtimeIntegrityCheck.setSelected(prefs.getBoolean("runtime_integrity_enabled", runtimeIntegrityCheck.isSelected()));
+            runtimeIntegrityIncludeField.setText(prefs.get("runtime_integrity_include", runtimeIntegrityIncludeField.getText()));
+
+            flowFlattenCheck.setSelected(prefs.getBoolean("flow_flatten_enabled", flowFlattenCheck.isSelected()));
+            getSpinner("flow_flatten_pct", flowFlattenPercentSpinner);
+            flowFlattenAllowRefLocalsCheck.setSelected(prefs.getBoolean("flow_flatten_ref_locals", flowFlattenAllowRefLocalsCheck.isSelected()));
+
+            safeControlFlowCheck.setSelected(prefs.getBoolean("safe_cf_enabled", safeControlFlowCheck.isSelected()));
+            getSpinner("safe_cf_level", safeControlFlowLevelSpinner);
+
+            mangledJumpCheck.setSelected(prefs.getBoolean("mangled_jump_enabled", mangledJumpCheck.isSelected()));
+            flowSwitchCheck.setSelected(prefs.getBoolean("flow_switch_enabled", flowSwitchCheck.isSelected()));
+            integerReturnCheck.setSelected(prefs.getBoolean("int_return_enabled", integerReturnCheck.isSelected()));
+            exceptionReturnCheck.setSelected(prefs.getBoolean("exception_return_enabled", exceptionReturnCheck.isSelected()));
+            getSpinner("exception_return_pct", exceptionReturnPercentSpinner);
+
+            stringEncCheck.setSelected(prefs.getBoolean("string_enc_enabled", stringEncCheck.isSelected()));
+            String strType = prefs.get("string_enc_type", (String) stringEncTypeCombo.getSelectedItem());
+            stringEncTypeCombo.setSelectedItem(strType);
+
+            numberEncCheck.setSelected(prefs.getBoolean("num_enc_enabled", numberEncCheck.isSelected()));
+            getSpinner("num_enc_layers", numberEncLayersSpinner);
+
+            refHidingCheck.setSelected(prefs.getBoolean("ref_hiding_enabled", refHidingCheck.isSelected()));
+            getSpinner("ref_hiding_pct", refHidingPercentSpinner);
+            getSpinner("ref_hiding_pool", refHidingBootstrapPoolSpinner);
+
+            fieldIndirectionCheck.setSelected(prefs.getBoolean("field_indir_enabled", fieldIndirectionCheck.isSelected()));
+            getSpinner("field_indir_pct", fieldIndirectionPercentSpinner);
+
+            fieldPackingCheck.setSelected(prefs.getBoolean("field_pack_enabled", fieldPackingCheck.isSelected()));
+            getSpinner("field_pack_min", fieldPackingMinFieldsSpinner);
+
+            crossClassDispersionCheck.setSelected(prefs.getBoolean("dispersion_enabled", crossClassDispersionCheck.isSelected()));
+            getSpinner("dispersion_pct", dispersionPercentSpinner);
+            getSpinner("dispersion_sinks", dispersionSinksSpinner);
+            getSpinner("dispersion_variants", dispersionVariantsSpinner);
+            getSpinner("dispersion_max_helpers", dispersionMaxHelpersSpinner);
+            getSpinner("dispersion_max_ops", dispersionMaxOpsSpinner);
+
+            semanticCoreCheck.setSelected(prefs.getBoolean("sem_core_enabled", semanticCoreCheck.isSelected()));
+            getSpinner("sem_core_pct", semanticCorePercentSpinner);
+            getSpinner("sem_core_min_ops", semanticCoreMinOpsSpinner);
+            getSpinner("sem_core_max_mtd", semanticCoreMaxMethodsSpinner);
+
+            semanticFabricCheck.setSelected(prefs.getBoolean("sem_fab_enabled", semanticFabricCheck.isSelected()));
+            getSpinner("sem_fab_pct", semanticFabricPercentSpinner);
+            getSpinner("sem_fab_min_ops", semanticFabricMinOpsSpinner);
+            getSpinner("sem_fab_max_mtd", semanticFabricMaxMethodsSpinner);
+            getSpinner("sem_fab_carriers", semanticFabricCarriersSpinner);
+
+            methodRelocationCheck.setSelected(prefs.getBoolean("mtd_reloc_enabled", methodRelocationCheck.isSelected()));
+            getSpinner("mtd_reloc_pct", methodRelocPercentSpinner);
+            getSpinner("mtd_reloc_max_mtd", methodRelocMaxMethodsSpinner);
+            getSpinner("mtd_reloc_carriers", methodRelocCarriersSpinner);
+            getSpinner("mtd_reloc_min_insns", methodRelocMinInsnsSpinner);
+
+            methodExtractionCheck.setSelected(prefs.getBoolean("mtd_extract_enabled", methodExtractionCheck.isSelected()));
+            getSpinner("mtd_extract_pct", methodExtractPercentSpinner);
+            getSpinner("mtd_extract_max_mtd", methodExtractMaxMethodsSpinner);
+            getSpinner("mtd_extract_carriers", methodExtractCarriersSpinner);
+            getSpinner("mtd_extract_min_insns", methodExtractMinInsnsSpinner);
+
+            renameClassesCheck.setSelected(prefs.getBoolean("rename_cls_enabled", renameClassesCheck.isSelected()));
+            classPrefixField.setText(prefs.get("rename_cls_prefix", classPrefixField.getText()));
+            getSpinner("rename_cls_depth", classDepthSpinner);
+            renameMainCheck.setSelected(prefs.getBoolean("rename_cls_main", renameMainCheck.isSelected()));
+
+            renameMethodsCheck.setSelected(prefs.getBoolean("rename_mtd_enabled", renameMethodsCheck.isSelected()));
+            renameMethodsPublicCheck.setSelected(prefs.getBoolean("rename_mtd_public", renameMethodsPublicCheck.isSelected()));
+            renameMethodsVirtualCheck.setSelected(prefs.getBoolean("rename_mtd_virtual", renameMethodsVirtualCheck.isSelected()));
+            getSpinner("rename_mtd_depth", methodDepthSpinner);
+
+            renameFieldsCheck.setSelected(prefs.getBoolean("rename_fld_enabled", renameFieldsCheck.isSelected()));
+            getSpinner("rename_fld_depth", fieldDepthSpinner);
+
+            namingAlphabetField.setText(prefs.get("naming_alphabet", namingAlphabetField.getText()));
+
+            recordMetadataCheck.setSelected(prefs.getBoolean("record_meta_enabled", recordMetadataCheck.isSelected()));
+            recordEraseIdentityCheck.setSelected(prefs.getBoolean("record_erase_id", recordEraseIdentityCheck.isSelected()));
+            getSpinner("record_depth", recordDepthSpinner);
+
+            resourceRenamerCheck.setSelected(prefs.getBoolean("res_renamer_enabled", resourceRenamerCheck.isSelected()));
+            getSpinner("res_renamer_depth", resourceDepthSpinner);
+            resourceExcludeNsField.setText(prefs.get("res_renamer_exclude_ns", resourceExcludeNsField.getText()));
+            resourceExcludeDirsField.setText(prefs.get("res_renamer_exclude_dirs", resourceExcludeDirsField.getText()));
+
+            sourceStripCheck.setSelected(prefs.getBoolean("src_strip_enabled", sourceStripCheck.isSelected()));
+            stripLineNumbersCheck.setSelected(prefs.getBoolean("strip_line_nums", stripLineNumbersCheck.isSelected()));
+            stripLocalVarsCheck.setSelected(prefs.getBoolean("strip_local_vars", stripLocalVarsCheck.isSelected()));
+            stripSignaturesCheck.setSelected(prefs.getBoolean("strip_sigs", stripSignaturesCheck.isSelected()));
+
+            releaseHardeningCheck.setSelected(prefs.getBoolean("rel_hard_enabled", releaseHardeningCheck.isSelected()));
+            stripMavenCheck.setSelected(prefs.getBoolean("strip_maven", stripMavenCheck.isSelected()));
+            stripFabricDescCheck.setSelected(prefs.getBoolean("strip_fabric_desc", stripFabricDescCheck.isSelected()));
+
+            annotationSanitizerCheck.setSelected(prefs.getBoolean("anno_sanitizer_enabled", annotationSanitizerCheck.isSelected()));
+            annotationSanitizerDescriptorsField.setText(prefs.get("anno_sanitizer_descs", annotationSanitizerDescriptorsField.getText()));
 
             String libsStr = prefs.get(PREF_LIBS, "");
             if (!libsStr.isEmpty()) {
