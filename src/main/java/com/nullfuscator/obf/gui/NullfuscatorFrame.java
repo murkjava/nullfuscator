@@ -224,18 +224,19 @@ public final class NullfuscatorFrame extends JFrame {
 
     private final JTextField infoMapField = new JTextField();
     private final JTextArea infoOutArea = new JTextArea();
+    private final List<Runnable> toggleUpdaters = new ArrayList<>();
 
     public NullfuscatorFrame() {
         setTitle("Nullfuscator " + BuildInfo.VERSION + " — Standalone Obfuscator");
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        setSize(1140, 840);
-        setMinimumSize(new Dimension(960, 680));
+        setSize(1180, 880);
+        setMinimumSize(new Dimension(1020, 720));
         setLocationRelativeTo(null);
 
         setupCheckboxSynchronizations();
 
         JTabbedPane tabbedPane = new JTabbedPane();
-        tabbedPane.setFont(safeFont(tabbedPane.getFont(), Font.BOLD, 13f));
+        tabbedPane.setFont(safeFont(tabbedPane.getFont(), Font.BOLD, 13.5f));
         tabbedPane.addTab("Обфускатор", createObfuscatorPanel());
         tabbedPane.addTab("Инспектор JAR", createJarInspectorPanel());
         tabbedPane.addTab("Исключения (Exemptions)", createExemptionsPanel());
@@ -1084,13 +1085,210 @@ public final class NullfuscatorFrame extends JFrame {
         }
     }
 
+    private JCheckBox makeMasterCheck(JCheckBox cb) {
+        cb.setFont(safeFont(cb.getFont(), Font.BOLD, 13.5f));
+        cb.setForeground(new Color(250, 250, 250));
+        return cb;
+    }
+
+    private JComponent createSeparator() {
+        JSeparator s = new JSeparator();
+        s.setForeground(new Color(55, 58, 66));
+        s.setBackground(new Color(36, 38, 44));
+        s.setMaximumSize(new Dimension(Integer.MAX_VALUE, 2));
+        return s;
+    }
+
+    private void styleSpinner(JSpinner spinner, int width) {
+        spinner.setPreferredSize(new Dimension(width, 30));
+        spinner.setMinimumSize(new Dimension(width, 30));
+        spinner.setFont(safeFont(null, Font.BOLD, 14f));
+        JComponent editor = spinner.getEditor();
+        if (editor instanceof JSpinner.DefaultEditor de) {
+            JTextField tf = de.getTextField();
+            tf.setFont(safeFont(null, Font.BOLD, 14f));
+            tf.setHorizontalAlignment(JTextField.CENTER);
+            tf.setForeground(new Color(250, 250, 250));
+            tf.setCaretColor(Color.WHITE);
+        }
+    }
+
     private JPanel createFieldRow(String label, JComponent comp) {
-        JPanel p = new JPanel(new BorderLayout(8, 0));
-        JLabel l = new JLabel(label);
-        l.setPreferredSize(new Dimension(340, 24));
-        p.add(l, BorderLayout.WEST);
-        p.add(comp, BorderLayout.CENTER);
-        return p;
+        JPanel row = new JPanel(new BorderLayout(12, 0));
+        row.setOpaque(false);
+        row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 36));
+
+        JLabel lbl = new JLabel(label);
+        lbl.setFont(safeFont(null, Font.PLAIN, 13.5f));
+        lbl.setPreferredSize(new Dimension(340, 28));
+        row.add(lbl, BorderLayout.WEST);
+
+        comp.setFont(safeFont(null, Font.PLAIN, 13f));
+        comp.setPreferredSize(new Dimension(comp.getPreferredSize().width, 30));
+        row.add(comp, BorderLayout.CENTER);
+        return row;
+    }
+
+    private JPanel createNumberRow(String label, JSpinner spinner, String unit) {
+        JPanel row = new JPanel(new BorderLayout(12, 0));
+        row.setOpaque(false);
+        row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 36));
+
+        JLabel lbl = new JLabel(label);
+        lbl.setFont(safeFont(null, Font.PLAIN, 13.5f));
+        row.add(lbl, BorderLayout.CENTER);
+
+        styleSpinner(spinner, 110);
+
+        JPanel rightBox = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 0));
+        rightBox.setOpaque(false);
+        rightBox.add(spinner);
+        if (unit != null && !unit.isEmpty()) {
+            JLabel unitLabel = new JLabel(unit);
+            unitLabel.setFont(safeFont(null, Font.BOLD, 13f));
+            unitLabel.setForeground(new Color(161, 161, 170));
+            unitLabel.setPreferredSize(new Dimension(50, 26));
+            rightBox.add(unitLabel);
+        }
+
+        row.add(rightBox, BorderLayout.EAST);
+        return row;
+    }
+
+    private JPanel createPercentRow(String label, JSpinner spinner, int min, int max) {
+        JPanel row = new JPanel(new BorderLayout(12, 0));
+        row.setOpaque(false);
+        row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 36));
+
+        JLabel lbl = new JLabel(label);
+        lbl.setFont(safeFont(null, Font.PLAIN, 13.5f));
+        lbl.setPreferredSize(new Dimension(340, 28));
+        row.add(lbl, BorderLayout.WEST);
+
+        int curVal = ((Number) spinner.getValue()).intValue();
+        curVal = Math.max(min, Math.min(max, curVal));
+        JSlider slider = new JSlider(min, max, curVal);
+        slider.setOpaque(false);
+        slider.setFocusable(false);
+
+        styleSpinner(spinner, 70);
+
+        JLabel unitLabel = new JLabel("%");
+        unitLabel.setFont(safeFont(null, Font.BOLD, 14f));
+        unitLabel.setForeground(new Color(56, 189, 248));
+
+        JPanel rightBox = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 0));
+        rightBox.setOpaque(false);
+        rightBox.setPreferredSize(new Dimension(105, 30));
+        rightBox.add(spinner);
+        rightBox.add(unitLabel);
+
+        final boolean[] updating = {false};
+
+        slider.addChangeListener(e -> {
+            if (!updating[0]) {
+                updating[0] = true;
+                spinner.setValue(slider.getValue());
+                updating[0] = false;
+            }
+        });
+
+        spinner.addChangeListener(e -> {
+            if (!updating[0]) {
+                updating[0] = true;
+                int val = ((Number) spinner.getValue()).intValue();
+                slider.setValue(Math.max(min, Math.min(max, val)));
+                updating[0] = false;
+            }
+        });
+
+        row.add(slider, BorderLayout.CENTER);
+        row.add(rightBox, BorderLayout.EAST);
+        return row;
+    }
+
+    private JPanel createLevelRow(String label, JSpinner spinner, int min, int max, String unit) {
+        JPanel row = new JPanel(new BorderLayout(12, 0));
+        row.setOpaque(false);
+        row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 36));
+
+        JLabel lbl = new JLabel(label);
+        lbl.setFont(safeFont(null, Font.PLAIN, 13.5f));
+        lbl.setPreferredSize(new Dimension(340, 28));
+        row.add(lbl, BorderLayout.WEST);
+
+        int curVal = ((Number) spinner.getValue()).intValue();
+        curVal = Math.max(min, Math.min(max, curVal));
+        JSlider slider = new JSlider(min, max, curVal);
+        slider.setOpaque(false);
+        slider.setFocusable(false);
+        slider.setMajorTickSpacing(1);
+        slider.setSnapToTicks(true);
+        slider.setPaintTicks(true);
+
+        styleSpinner(spinner, 65);
+
+        JLabel unitLabel = new JLabel(unit);
+        unitLabel.setFont(safeFont(null, Font.BOLD, 13f));
+        unitLabel.setForeground(new Color(161, 161, 170));
+
+        JPanel rightBox = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 0));
+        rightBox.setOpaque(false);
+        rightBox.setPreferredSize(new Dimension(135, 30));
+        rightBox.add(spinner);
+        rightBox.add(unitLabel);
+
+        final boolean[] updating = {false};
+
+        slider.addChangeListener(e -> {
+            if (!updating[0]) {
+                updating[0] = true;
+                spinner.setValue(slider.getValue());
+                updating[0] = false;
+            }
+        });
+
+        spinner.addChangeListener(e -> {
+            if (!updating[0]) {
+                updating[0] = true;
+                int val = ((Number) spinner.getValue()).intValue();
+                slider.setValue(Math.max(min, Math.min(max, val)));
+                updating[0] = false;
+            }
+        });
+
+        row.add(slider, BorderLayout.CENTER);
+        row.add(rightBox, BorderLayout.EAST);
+        return row;
+    }
+
+    private void setHierarchyEnabled(Component comp, boolean enabled) {
+        comp.setEnabled(enabled);
+        if (comp instanceof Container cont) {
+            for (Component child : cont.getComponents()) {
+                setHierarchyEnabled(child, enabled);
+            }
+        }
+    }
+
+    private void bindToggle(JCheckBox master, JComponent... children) {
+        Runnable update = () -> {
+            boolean enabled = master.isSelected();
+            for (JComponent c : children) {
+                if (c != null) {
+                    setHierarchyEnabled(c, enabled);
+                }
+            }
+        };
+        master.addActionListener(e -> update.run());
+        toggleUpdaters.add(update);
+        update.run();
+    }
+
+    private void updateAllToggles() {
+        for (Runnable r : toggleUpdaters) {
+            r.run();
+        }
     }
 
     private JScrollPane wrapInScroll(JPanel content) {
@@ -1115,6 +1313,7 @@ public final class NullfuscatorFrame extends JFrame {
         root.add(rulesPanel, BorderLayout.NORTH);
 
         JTabbedPane exTabs = new JTabbedPane();
+        exTabs.setFont(safeFont(exTabs.getFont(), Font.BOLD, 13f));
 
         JPanel customPanel = new JPanel(new BorderLayout(6, 6));
         customPanel.setBorder(new EmptyBorder(8, 8, 8, 8));
@@ -1154,45 +1353,65 @@ public final class NullfuscatorFrame extends JFrame {
 
         JPanel jarCard = createSectionPanel("Бюджет роста размера JAR (Jar Growth Budget)");
         jarCard.setLayout(new BoxLayout(jarCard, BoxLayout.Y_AXIS));
-        jarCard.add(budgetsEnabledCheck);
-        jarCard.add(Box.createVerticalStrut(8));
-        jarCard.add(createFieldRow("Максимальный допустимый рост JAR (%):", maxJarGrowthPercentSpinner));
+        jarCard.add(makeMasterCheck(budgetsEnabledCheck));
+        jarCard.add(Box.createVerticalStrut(4));
+        jarCard.add(createSeparator());
         jarCard.add(Box.createVerticalStrut(6));
-        jarCard.add(createFieldRow("Запас роста размера JAR (в байтах):", jarGrowthBytesSpinner));
+        JPanel maxJarRow = createNumberRow("Максимальный допустимый рост JAR (%): (-1 для отключения)", maxJarGrowthPercentSpinner, "%");
+        JPanel jarBytesRow = createNumberRow("Запас роста размера JAR в байтах:", jarGrowthBytesSpinner, "байт");
+        jarCard.add(maxJarRow);
+        jarCard.add(Box.createVerticalStrut(4));
+        jarCard.add(jarBytesRow);
         content.add(jarCard);
-        content.add(Box.createVerticalStrut(10));
+        content.add(Box.createVerticalStrut(12));
 
         JPanel structCard = createSectionPanel("Бюджеты структуры байткода (Classes / Methods / Instructions)");
         structCard.setLayout(new BoxLayout(structCard, BoxLayout.Y_AXIS));
-        structCard.add(createFieldRow("Максимальный рост числа классов (%):", maxClassGrowthPercentSpinner));
+        JPanel maxClsRow = createNumberRow("Максимальный рост числа классов (%): (-1 для отключения)", maxClassGrowthPercentSpinner, "%");
+        JPanel clsAllowRow = createNumberRow("Допустимый запас роста классов:", classGrowthAllowanceSpinner, "шт.");
+        JPanel maxMtdRow = createNumberRow("Максимальный рост числа методов (%): (-1 для отключения)", maxMethodGrowthPercentSpinner, "%");
+        JPanel mtdAllowRow = createNumberRow("Допустимый запас роста методов:", methodGrowthAllowanceSpinner, "шт.");
+        JPanel maxInsnRow = createNumberRow("Максимальный рост инструкций байткода (%): (-1 для отключения)", maxInstructionGrowthPercentSpinner, "%");
+        JPanel insnAllowRow = createNumberRow("Допустимый запас инструкций:", instructionGrowthAllowanceSpinner, "шт.");
+        structCard.add(maxClsRow);
+        structCard.add(Box.createVerticalStrut(4));
+        structCard.add(clsAllowRow);
         structCard.add(Box.createVerticalStrut(6));
-        structCard.add(createFieldRow("Допустимый запас роста классов (шт):", classGrowthAllowanceSpinner));
+        structCard.add(createSeparator());
         structCard.add(Box.createVerticalStrut(6));
-        structCard.add(createFieldRow("Максимальный рост числа методов (%):", maxMethodGrowthPercentSpinner));
+        structCard.add(maxMtdRow);
+        structCard.add(Box.createVerticalStrut(4));
+        structCard.add(mtdAllowRow);
         structCard.add(Box.createVerticalStrut(6));
-        structCard.add(createFieldRow("Допустимый запас роста методов (шт):", methodGrowthAllowanceSpinner));
+        structCard.add(createSeparator());
         structCard.add(Box.createVerticalStrut(6));
-        structCard.add(createFieldRow("Максимальный рост инструкций байткода (%):", maxInstructionGrowthPercentSpinner));
-        structCard.add(Box.createVerticalStrut(6));
-        structCard.add(createFieldRow("Допустимый запас инструкций (шт):", instructionGrowthAllowanceSpinner));
+        structCard.add(maxInsnRow);
+        structCard.add(Box.createVerticalStrut(4));
+        structCard.add(insnAllowRow);
+        bindToggle(budgetsEnabledCheck, maxJarRow, jarBytesRow, maxClsRow, clsAllowRow, maxMtdRow, mtdAllowRow, maxInsnRow, insnAllowRow);
         content.add(structCard);
-        content.add(Box.createVerticalStrut(10));
+        content.add(Box.createVerticalStrut(12));
 
         JPanel covCard = createSectionPanel("Политика минимального покрытия (Coverage Policy)");
         covCard.setLayout(new BoxLayout(covCard, BoxLayout.Y_AXIS));
-        covCard.add(coverageEnabledCheck);
-        covCard.add(Box.createVerticalStrut(8));
-        covCard.add(createFieldRow("Минимальный процент модификации (%):", coverageMinPercentSpinner));
+        covCard.add(makeMasterCheck(coverageEnabledCheck));
+        covCard.add(Box.createVerticalStrut(4));
+        covCard.add(createSeparator());
         covCard.add(Box.createVerticalStrut(6));
-        covCard.add(createFieldRow("Обязательные селекторы (coverage.required):", coverageRequiredField));
+        JPanel covPctRow = createPercentRow("Минимальный процент модификации:", coverageMinPercentSpinner, 1, 100);
+        JPanel covReqRow = createFieldRow("Обязательные селекторы (coverage.required):", coverageRequiredField);
+        covCard.add(covPctRow);
+        covCard.add(Box.createVerticalStrut(4));
+        covCard.add(covReqRow);
+        bindToggle(coverageEnabledCheck, covPctRow, covReqRow);
         content.add(covCard);
-        content.add(Box.createVerticalStrut(10));
+        content.add(Box.createVerticalStrut(12));
 
         JPanel infoCard = createSectionPanel("Справка по бюджетам");
         infoCard.setLayout(new BorderLayout(6, 6));
         JTextArea infoText = new JTextArea();
         infoText.setEditable(false);
-        infoText.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 12));
+        infoText.setFont(safeFont(null, Font.PLAIN, 12.5f));
         infoText.setBackground(root.getBackground());
         infoText.setText(
                 "• Бюджеты роста гарантируют, что итоговый размер JAR или объем байткода не превысит лимиты.\n" +
@@ -1214,13 +1433,16 @@ public final class NullfuscatorFrame extends JFrame {
         topBar.setBorder(new EmptyBorder(0, 0, 6, 0));
         JButton syncBtn = new JButton("↺ Применить настройки текущего пресета ко всем трансформерам");
         syncBtn.setToolTipText("Сбрасывает переключатели и параметры трансформеров к значениям выбранного пресета");
+        syncBtn.setFont(safeFont(syncBtn.getFont(), Font.PLAIN, 12.5f));
         syncBtn.addActionListener(e -> applyPresetDefaults((String) presetCombo.getSelectedItem()));
-        topBar.add(new JLabel("Тонкая настройка каждого трансформера Nullfuscator:"), BorderLayout.WEST);
+        JLabel topHint = new JLabel("Тонкая настройка каждого трансформера Nullfuscator:");
+        topHint.setFont(safeFont(null, Font.BOLD, 13f));
+        topBar.add(topHint, BorderLayout.WEST);
         topBar.add(syncBtn, BorderLayout.EAST);
         root.add(topBar, BorderLayout.NORTH);
 
         JTabbedPane subTabs = new JTabbedPane();
-        subTabs.setFont(safeFont(subTabs.getFont(), Font.PLAIN, 12f));
+        subTabs.setFont(safeFont(subTabs.getFont(), Font.BOLD, 13f));
         subTabs.addTab("🛡 Анализ и защита", createAnalysisAndSecurityTab());
         subTabs.addTab("🔀 Поток выполнения", createControlFlowTab());
         subTabs.addTab("🔐 Шифрование и ссылки", createEncryptionTab());
@@ -1238,31 +1460,47 @@ public final class NullfuscatorFrame extends JFrame {
 
         JPanel aiCard = createSectionPanel("Защита от искусственного интеллекта (Anti-AI)");
         aiCard.setLayout(new BoxLayout(aiCard, BoxLayout.Y_AXIS));
-        aiCard.add(antiAiCheck);
+        aiCard.add(makeMasterCheck(antiAiCheck));
+        aiCard.add(Box.createVerticalStrut(4));
+        aiCard.add(createSeparator());
         aiCard.add(Box.createVerticalStrut(6));
-        aiCard.add(createFieldRow("Уровень защиты (level 1-3):", antiAiLevelSpinner));
+        JPanel aiLvlRow = createLevelRow("Уровень защиты (level 1-3):", antiAiLevelSpinner, 1, 3, "ур.");
+        JPanel aiConstRow = createPercentRow("Процент кодирования констант:", antiAiConstPercentSpinner, 0, 100);
+        JPanel aiDecoyRow = createNumberRow("Количество ложных методов-приманок:", antiAiDecoySpinner, "шт.");
+        aiCard.add(aiLvlRow);
         aiCard.add(Box.createVerticalStrut(4));
-        aiCard.add(createFieldRow("Процент кодирования констант (%):", antiAiConstPercentSpinner));
+        aiCard.add(aiConstRow);
         aiCard.add(Box.createVerticalStrut(4));
-        aiCard.add(createFieldRow("Количество ложных методов-приманок (decoyMethods):", antiAiDecoySpinner));
+        aiCard.add(aiDecoyRow);
+        bindToggle(antiAiCheck, aiLvlRow, aiConstRow, aiDecoyRow);
         content.add(aiCard);
-        content.add(Box.createVerticalStrut(8));
+        content.add(Box.createVerticalStrut(12));
 
         JPanel decompCard = createSectionPanel("Защита от декомпиляторов (Anti-Decompiler)");
         decompCard.setLayout(new BoxLayout(decompCard, BoxLayout.Y_AXIS));
-        decompCard.add(antiDecompilerCheck);
+        decompCard.add(makeMasterCheck(antiDecompilerCheck));
+        decompCard.add(Box.createVerticalStrut(4));
+        decompCard.add(createSeparator());
         decompCard.add(Box.createVerticalStrut(6));
-        decompCard.add(createFieldRow("Уровень атак на декомпиляторы (level 1-3):", antiDecompilerLevelSpinner));
+        JPanel decompLvlRow = createLevelRow("Уровень атак на декомпиляторы (level 1-3):", antiDecompilerLevelSpinner, 1, 3, "ур.");
+        decompCard.add(decompLvlRow);
+        bindToggle(antiDecompilerCheck, decompLvlRow);
         content.add(decompCard);
-        content.add(Box.createVerticalStrut(8));
+        content.add(Box.createVerticalStrut(12));
 
         JPanel deobfCard = createSectionPanel("Защита от AST деобфускаторов (Anti-Deobf)");
         deobfCard.setLayout(new BoxLayout(deobfCard, BoxLayout.Y_AXIS));
-        deobfCard.add(antiDeobfCheck);
+        deobfCard.add(makeMasterCheck(antiDeobfCheck));
+        deobfCard.add(Box.createVerticalStrut(4));
+        deobfCard.add(createSeparator());
         deobfCard.add(Box.createVerticalStrut(6));
-        deobfCard.add(createFieldRow("Уровень разрушения AST (level 1-3):", antiDeobfLevelSpinner));
+        JPanel deobfLvlRow = createLevelRow("Уровень разрушения AST (level 1-3):", antiDeobfLevelSpinner, 1, 3, "ур.");
+        deobfCard.add(deobfLvlRow);
         deobfCard.add(Box.createVerticalStrut(6));
-        JPanel deobfGrid = new JPanel(new GridLayout(3, 2, 6, 4));
+        deobfCard.add(createSeparator());
+        deobfCard.add(Box.createVerticalStrut(6));
+        JPanel deobfGrid = new JPanel(new GridLayout(3, 2, 8, 6));
+        deobfGrid.setOpaque(false);
         deobfGrid.add(antiDeobfBadSigCheck);
         deobfGrid.add(antiDeobfBadClassSigCheck);
         deobfGrid.add(antiDeobfPoisonAnnoCheck);
@@ -1270,26 +1508,36 @@ public final class NullfuscatorFrame extends JFrame {
         deobfGrid.add(antiDeobfTrapRealCheck);
         deobfGrid.add(antiDeobfHoneypotsCheck);
         deobfCard.add(deobfGrid);
+        bindToggle(antiDeobfCheck, deobfLvlRow, deobfGrid);
         content.add(deobfCard);
-        content.add(Box.createVerticalStrut(8));
+        content.add(Box.createVerticalStrut(12));
 
         JPanel debugCard = createSectionPanel("Обнаружение отладчиков (Anti-Debug)");
         debugCard.setLayout(new BoxLayout(debugCard, BoxLayout.Y_AXIS));
-        debugCard.add(antiDebugCheck);
-        debugCard.add(Box.createVerticalStrut(6));
-        debugCard.add(createFieldRow("Процент защищаемых методов (%):", antiDebugCheckPercentSpinner));
+        debugCard.add(makeMasterCheck(antiDebugCheck));
         debugCard.add(Box.createVerticalStrut(4));
-        debugCard.add(createFieldRow("Количество детекторов отладки (detectors):", antiDebugDetectorsSpinner));
+        debugCard.add(createSeparator());
+        debugCard.add(Box.createVerticalStrut(6));
+        JPanel debugPctRow = createPercentRow("Процент защищаемых методов:", antiDebugCheckPercentSpinner, 0, 100);
+        JPanel debugDetRow = createNumberRow("Количество детекторов отладки:", antiDebugDetectorsSpinner, "шт.");
+        debugCard.add(debugPctRow);
+        debugCard.add(Box.createVerticalStrut(4));
+        debugCard.add(debugDetRow);
+        bindToggle(antiDebugCheck, debugPctRow, debugDetRow);
         content.add(debugCard);
-        content.add(Box.createVerticalStrut(8));
+        content.add(Box.createVerticalStrut(12));
 
         JPanel crasherCard = createSectionPanel("Целостность и краш инструментов (Hardening & Crasher)");
         crasherCard.setLayout(new BoxLayout(crasherCard, BoxLayout.Y_AXIS));
-        crasherCard.add(fileCrasherCheck);
+        crasherCard.add(makeMasterCheck(fileCrasherCheck));
         crasherCard.add(Box.createVerticalStrut(6));
-        crasherCard.add(runtimeIntegrityCheck);
+        crasherCard.add(createSeparator());
+        crasherCard.add(Box.createVerticalStrut(6));
+        crasherCard.add(makeMasterCheck(runtimeIntegrityCheck));
         crasherCard.add(Box.createVerticalStrut(4));
-        crasherCard.add(createFieldRow("Классы для контроля целостности (include):", runtimeIntegrityIncludeField));
+        JPanel integrityRow = createFieldRow("Классы для контроля целостности (include):", runtimeIntegrityIncludeField);
+        crasherCard.add(integrityRow);
+        bindToggle(runtimeIntegrityCheck, integrityRow);
         content.add(crasherCard);
 
         return wrapInScroll(content);
@@ -1302,37 +1550,51 @@ public final class NullfuscatorFrame extends JFrame {
 
         JPanel flatCard = createSectionPanel("Сглаживание потока (Control Flow Flattening)");
         flatCard.setLayout(new BoxLayout(flatCard, BoxLayout.Y_AXIS));
-        flatCard.add(flowFlattenCheck);
+        flatCard.add(makeMasterCheck(flowFlattenCheck));
+        flatCard.add(Box.createVerticalStrut(4));
+        flatCard.add(createSeparator());
         flatCard.add(Box.createVerticalStrut(6));
-        flatCard.add(createFieldRow("Интенсивность сглаживания (%):", flowFlattenPercentSpinner));
+        JPanel flatPctRow = createPercentRow("Интенсивность сглаживания:", flowFlattenPercentSpinner, 0, 100);
+        flatCard.add(flatPctRow);
         flatCard.add(Box.createVerticalStrut(4));
         flatCard.add(flowFlattenAllowRefLocalsCheck);
+        bindToggle(flowFlattenCheck, flatPctRow, flowFlattenAllowRefLocalsCheck);
         content.add(flatCard);
-        content.add(Box.createVerticalStrut(8));
+        content.add(Box.createVerticalStrut(12));
 
         JPanel safeCard = createSectionPanel("Непрозрачные предикаты (Safe Control Flow)");
         safeCard.setLayout(new BoxLayout(safeCard, BoxLayout.Y_AXIS));
-        safeCard.add(safeControlFlowCheck);
+        safeCard.add(makeMasterCheck(safeControlFlowCheck));
+        safeCard.add(Box.createVerticalStrut(4));
+        safeCard.add(createSeparator());
         safeCard.add(Box.createVerticalStrut(6));
-        safeCard.add(createFieldRow("Уровень сложности предикатов (level 1-3):", safeControlFlowLevelSpinner));
+        JPanel safeLvlRow = createLevelRow("Уровень сложности предикатов (level 1-3):", safeControlFlowLevelSpinner, 1, 3, "ур.");
+        safeCard.add(safeLvlRow);
+        bindToggle(safeControlFlowCheck, safeLvlRow);
         content.add(safeCard);
-        content.add(Box.createVerticalStrut(8));
+        content.add(Box.createVerticalStrut(12));
 
         JPanel branchCard = createSectionPanel("Мутация переходов и ветвлений");
         branchCard.setLayout(new BoxLayout(branchCard, BoxLayout.Y_AXIS));
-        branchCard.add(mangledJumpCheck);
+        branchCard.add(makeMasterCheck(mangledJumpCheck));
         branchCard.add(Box.createVerticalStrut(4));
-        branchCard.add(flowSwitchCheck);
+        branchCard.add(createSeparator());
+        branchCard.add(Box.createVerticalStrut(6));
+        branchCard.add(makeMasterCheck(flowSwitchCheck));
         content.add(branchCard);
-        content.add(Box.createVerticalStrut(8));
+        content.add(Box.createVerticalStrut(12));
 
         JPanel retCard = createSectionPanel("Шифрование возврата значений");
         retCard.setLayout(new BoxLayout(retCard, BoxLayout.Y_AXIS));
-        retCard.add(integerReturnCheck);
+        retCard.add(makeMasterCheck(integerReturnCheck));
         retCard.add(Box.createVerticalStrut(6));
-        retCard.add(exceptionReturnCheck);
+        retCard.add(createSeparator());
+        retCard.add(Box.createVerticalStrut(6));
+        retCard.add(makeMasterCheck(exceptionReturnCheck));
         retCard.add(Box.createVerticalStrut(4));
-        retCard.add(createFieldRow("Процент методов с Exception Return (%):", exceptionReturnPercentSpinner));
+        JPanel exRetRow = createPercentRow("Процент методов с Exception Return:", exceptionReturnPercentSpinner, 0, 100);
+        retCard.add(exRetRow);
+        bindToggle(exceptionReturnCheck, exRetRow);
         content.add(retCard);
 
         return wrapInScroll(content);
@@ -1345,43 +1607,64 @@ public final class NullfuscatorFrame extends JFrame {
 
         JPanel strCard = createSectionPanel("Шифрование строк (String Encryption)");
         strCard.setLayout(new BoxLayout(strCard, BoxLayout.Y_AXIS));
-        strCard.add(stringEncCheck);
+        strCard.add(makeMasterCheck(stringEncCheck));
+        strCard.add(Box.createVerticalStrut(4));
+        strCard.add(createSeparator());
         strCard.add(Box.createVerticalStrut(6));
-        strCard.add(createFieldRow("Тип шифрования строк:", stringEncTypeCombo));
+        JPanel strRow = createFieldRow("Тип шифрования строк:", stringEncTypeCombo);
+        strCard.add(strRow);
+        bindToggle(stringEncCheck, strRow);
         content.add(strCard);
-        content.add(Box.createVerticalStrut(8));
+        content.add(Box.createVerticalStrut(12));
 
         JPanel numCard = createSectionPanel("Шифрование констант и чисел (Number Encryption)");
         numCard.setLayout(new BoxLayout(numCard, BoxLayout.Y_AXIS));
-        numCard.add(numberEncCheck);
+        numCard.add(makeMasterCheck(numberEncCheck));
+        numCard.add(Box.createVerticalStrut(4));
+        numCard.add(createSeparator());
         numCard.add(Box.createVerticalStrut(6));
-        numCard.add(createFieldRow("Количество слоев математики (layers 1-5):", numberEncLayersSpinner));
+        JPanel numLayersRow = createLevelRow("Количество слоев математики (layers 1-5):", numberEncLayersSpinner, 1, 5, "слоев");
+        numCard.add(numLayersRow);
+        bindToggle(numberEncCheck, numLayersRow);
         content.add(numCard);
-        content.add(Box.createVerticalStrut(8));
+        content.add(Box.createVerticalStrut(12));
 
         JPanel indyCard = createSectionPanel("Скрытие вызовов через invokedynamic (Reference Hiding)");
         indyCard.setLayout(new BoxLayout(indyCard, BoxLayout.Y_AXIS));
-        indyCard.add(refHidingCheck);
-        indyCard.add(Box.createVerticalStrut(6));
-        indyCard.add(createFieldRow("Процент скрываемых вызовов (%):", refHidingPercentSpinner));
+        indyCard.add(makeMasterCheck(refHidingCheck));
         indyCard.add(Box.createVerticalStrut(4));
-        indyCard.add(createFieldRow("Размер пула bootstrap методов:", refHidingBootstrapPoolSpinner));
+        indyCard.add(createSeparator());
+        indyCard.add(Box.createVerticalStrut(6));
+        JPanel refPctRow = createPercentRow("Процент скрываемых вызовов:", refHidingPercentSpinner, 0, 100);
+        JPanel refPoolRow = createNumberRow("Размер пула bootstrap методов:", refHidingBootstrapPoolSpinner, "шт.");
+        indyCard.add(refPctRow);
+        indyCard.add(Box.createVerticalStrut(4));
+        indyCard.add(refPoolRow);
+        bindToggle(refHidingCheck, refPctRow, refPoolRow);
         content.add(indyCard);
-        content.add(Box.createVerticalStrut(8));
+        content.add(Box.createVerticalStrut(12));
 
         JPanel indirCard = createSectionPanel("Косвенный доступ к полям (Field Indirection)");
         indirCard.setLayout(new BoxLayout(indirCard, BoxLayout.Y_AXIS));
-        indirCard.add(fieldIndirectionCheck);
+        indirCard.add(makeMasterCheck(fieldIndirectionCheck));
+        indirCard.add(Box.createVerticalStrut(4));
+        indirCard.add(createSeparator());
         indirCard.add(Box.createVerticalStrut(6));
-        indirCard.add(createFieldRow("Процент косвенных доступов (%):", fieldIndirectionPercentSpinner));
+        JPanel indirRow = createPercentRow("Процент косвенных доступов:", fieldIndirectionPercentSpinner, 0, 100);
+        indirCard.add(indirRow);
+        bindToggle(fieldIndirectionCheck, indirRow);
         content.add(indirCard);
-        content.add(Box.createVerticalStrut(8));
+        content.add(Box.createVerticalStrut(12));
 
         JPanel packCard = createSectionPanel("Упаковка полей (Field Packing)");
         packCard.setLayout(new BoxLayout(packCard, BoxLayout.Y_AXIS));
-        packCard.add(fieldPackingCheck);
+        packCard.add(makeMasterCheck(fieldPackingCheck));
+        packCard.add(Box.createVerticalStrut(4));
+        packCard.add(createSeparator());
         packCard.add(Box.createVerticalStrut(6));
-        packCard.add(createFieldRow("Мин. число полей для упаковки (minFields):", fieldPackingMinFieldsSpinner));
+        JPanel packRow = createNumberRow("Мин. число полей для упаковки:", fieldPackingMinFieldsSpinner, "полей");
+        packCard.add(packRow);
+        bindToggle(fieldPackingCheck, packRow);
         content.add(packCard);
 
         return wrapInScroll(content);
@@ -1394,71 +1677,107 @@ public final class NullfuscatorFrame extends JFrame {
 
         JPanel dispCard = createSectionPanel("Межклассовое распыление (Cross-Class Dispersion)");
         dispCard.setLayout(new BoxLayout(dispCard, BoxLayout.Y_AXIS));
-        dispCard.add(crossClassDispersionCheck);
+        dispCard.add(makeMasterCheck(crossClassDispersionCheck));
+        dispCard.add(Box.createVerticalStrut(4));
+        dispCard.add(createSeparator());
         dispCard.add(Box.createVerticalStrut(6));
-        dispCard.add(createFieldRow("Процент распыляемых операций (%):", dispersionPercentSpinner));
+        JPanel dispPctRow = createPercentRow("Процент распыляемых операций:", dispersionPercentSpinner, 0, 100);
+        JPanel dispSinksRow = createNumberRow("Количество классов-приемников (sinks):", dispersionSinksSpinner, "классов");
+        JPanel dispVarRow = createNumberRow("Вариантов на опкод (variantsPerOpcode):", dispersionVariantsSpinner, "вар.");
+        JPanel dispHelpRow = createNumberRow("Максимум хелперов (maxHelpers):", dispersionMaxHelpersSpinner, "шт.");
+        JPanel dispOpsRow = createNumberRow("Максимум операций (maxOperations):", dispersionMaxOpsSpinner, "шт.");
+        dispCard.add(dispPctRow);
         dispCard.add(Box.createVerticalStrut(4));
-        dispCard.add(createFieldRow("Количество классов-приемников (sinks):", dispersionSinksSpinner));
+        dispCard.add(dispSinksRow);
         dispCard.add(Box.createVerticalStrut(4));
-        dispCard.add(createFieldRow("Вариантов на опкод (variantsPerOpcode):", dispersionVariantsSpinner));
+        dispCard.add(dispVarRow);
         dispCard.add(Box.createVerticalStrut(4));
-        dispCard.add(createFieldRow("Максимум хелперов (maxHelpers):", dispersionMaxHelpersSpinner));
+        dispCard.add(dispHelpRow);
         dispCard.add(Box.createVerticalStrut(4));
-        dispCard.add(createFieldRow("Максимум операций (maxOperations):", dispersionMaxOpsSpinner));
+        dispCard.add(dispOpsRow);
+        bindToggle(crossClassDispersionCheck, dispPctRow, dispSinksRow, dispVarRow, dispHelpRow, dispOpsRow);
         content.add(dispCard);
-        content.add(Box.createVerticalStrut(8));
+        content.add(Box.createVerticalStrut(12));
 
         JPanel semCoreCard = createSectionPanel("Семантическое кодирование выражений (Semantic Core)");
         semCoreCard.setLayout(new BoxLayout(semCoreCard, BoxLayout.Y_AXIS));
-        semCoreCard.add(semanticCoreCheck);
+        semCoreCard.add(makeMasterCheck(semanticCoreCheck));
+        semCoreCard.add(Box.createVerticalStrut(4));
+        semCoreCard.add(createSeparator());
         semCoreCard.add(Box.createVerticalStrut(6));
-        semCoreCard.add(createFieldRow("Процент покрытия (%):", semanticCorePercentSpinner));
+        JPanel semCorePctRow = createPercentRow("Процент покрытия:", semanticCorePercentSpinner, 0, 100);
+        JPanel semCoreOpsRow = createNumberRow("Мин. операций в блоке (minOperations):", semanticCoreMinOpsSpinner, "оп.");
+        JPanel semCoreMtdRow = createNumberRow("Максимум методов (maxMethods):", semanticCoreMaxMethodsSpinner, "шт.");
+        semCoreCard.add(semCorePctRow);
         semCoreCard.add(Box.createVerticalStrut(4));
-        semCoreCard.add(createFieldRow("Мин. операций в блоке (minOperations):", semanticCoreMinOpsSpinner));
+        semCoreCard.add(semCoreOpsRow);
         semCoreCard.add(Box.createVerticalStrut(4));
-        semCoreCard.add(createFieldRow("Максимум методов (maxMethods):", semanticCoreMaxMethodsSpinner));
+        semCoreCard.add(semCoreMtdRow);
+        bindToggle(semanticCoreCheck, semCorePctRow, semCoreOpsRow, semCoreMtdRow);
         content.add(semCoreCard);
-        content.add(Box.createVerticalStrut(8));
+        content.add(Box.createVerticalStrut(12));
 
         JPanel semFabCard = createSectionPanel("Семантическая ткань (Semantic Fabric)");
         semFabCard.setLayout(new BoxLayout(semFabCard, BoxLayout.Y_AXIS));
-        semFabCard.add(semanticFabricCheck);
+        semFabCard.add(makeMasterCheck(semanticFabricCheck));
+        semFabCard.add(Box.createVerticalStrut(4));
+        semFabCard.add(createSeparator());
         semFabCard.add(Box.createVerticalStrut(6));
-        semFabCard.add(createFieldRow("Процент покрытия (%):", semanticFabricPercentSpinner));
+        JPanel semFabPctRow = createPercentRow("Процент покрытия:", semanticFabricPercentSpinner, 0, 100);
+        JPanel semFabOpsRow = createNumberRow("Мин. арифметических операций:", semanticFabricMinOpsSpinner, "оп.");
+        JPanel semFabMtdRow = createNumberRow("Максимум методов (maxMethods):", semanticFabricMaxMethodsSpinner, "шт.");
+        JPanel semFabCarRow = createNumberRow("Классов-носителей (carriers):", semanticFabricCarriersSpinner, "классов");
+        semFabCard.add(semFabPctRow);
         semFabCard.add(Box.createVerticalStrut(4));
-        semFabCard.add(createFieldRow("Мин. арифметических операций (minArithmeticOps):", semanticFabricMinOpsSpinner));
+        semFabCard.add(semFabOpsRow);
         semFabCard.add(Box.createVerticalStrut(4));
-        semFabCard.add(createFieldRow("Максимум методов (maxMethods):", semanticFabricMaxMethodsSpinner));
+        semFabCard.add(semFabMtdRow);
         semFabCard.add(Box.createVerticalStrut(4));
-        semFabCard.add(createFieldRow("Классов-носителей (carriers):", semanticFabricCarriersSpinner));
+        semFabCarRow.setOpaque(false);
+        semFabCard.add(semFabCarRow);
+        bindToggle(semanticFabricCheck, semFabPctRow, semFabOpsRow, semFabMtdRow, semFabCarRow);
         content.add(semFabCard);
-        content.add(Box.createVerticalStrut(8));
+        content.add(Box.createVerticalStrut(12));
 
         JPanel relocCard = createSectionPanel("Перемещение методов между классами (Method Relocation)");
         relocCard.setLayout(new BoxLayout(relocCard, BoxLayout.Y_AXIS));
-        relocCard.add(methodRelocationCheck);
+        relocCard.add(makeMasterCheck(methodRelocationCheck));
+        relocCard.add(Box.createVerticalStrut(4));
+        relocCard.add(createSeparator());
         relocCard.add(Box.createVerticalStrut(6));
-        relocCard.add(createFieldRow("Процент перемещаемых методов (%):", methodRelocPercentSpinner));
+        JPanel relocPctRow = createPercentRow("Процент перемещаемых методов:", methodRelocPercentSpinner, 0, 100);
+        JPanel relocMtdRow = createNumberRow("Максимум методов (maxMethods):", methodRelocMaxMethodsSpinner, "шт.");
+        JPanel relocCarRow = createNumberRow("Классов-носителей (carriers):", methodRelocCarriersSpinner, "классов");
+        JPanel relocInsnRow = createNumberRow("Мин. инструкций для переноса:", methodRelocMinInsnsSpinner, "инстр.");
+        relocCard.add(relocPctRow);
         relocCard.add(Box.createVerticalStrut(4));
-        relocCard.add(createFieldRow("Максимум методов (maxMethods):", methodRelocMaxMethodsSpinner));
+        relocCard.add(relocMtdRow);
         relocCard.add(Box.createVerticalStrut(4));
-        relocCard.add(createFieldRow("Классов-носителей (carriers):", methodRelocCarriersSpinner));
+        relocCard.add(relocCarRow);
         relocCard.add(Box.createVerticalStrut(4));
-        relocCard.add(createFieldRow("Мин. инструкций для переноса (minInstructions):", methodRelocMinInsnsSpinner));
+        relocCard.add(relocInsnRow);
+        bindToggle(methodRelocationCheck, relocPctRow, relocMtdRow, relocCarRow, relocInsnRow);
         content.add(relocCard);
-        content.add(Box.createVerticalStrut(8));
+        content.add(Box.createVerticalStrut(12));
 
         JPanel extractCard = createSectionPanel("Извлечение статических методов (Method Extraction)");
         extractCard.setLayout(new BoxLayout(extractCard, BoxLayout.Y_AXIS));
-        extractCard.add(methodExtractionCheck);
+        extractCard.add(makeMasterCheck(methodExtractionCheck));
+        extractCard.add(Box.createVerticalStrut(4));
+        extractCard.add(createSeparator());
         extractCard.add(Box.createVerticalStrut(6));
-        extractCard.add(createFieldRow("Процент извлекаемых методов (%):", methodExtractPercentSpinner));
+        JPanel extractPctRow = createPercentRow("Процент извлекаемых методов:", methodExtractPercentSpinner, 0, 100);
+        JPanel extractMtdRow = createNumberRow("Максимум методов (maxMethods):", methodExtractMaxMethodsSpinner, "шт.");
+        JPanel extractCarRow = createNumberRow("Классов-носителей (carriers):", methodExtractCarriersSpinner, "классов");
+        JPanel extractInsnRow = createNumberRow("Мин. инструкций для извлечения:", methodExtractMinInsnsSpinner, "инстр.");
+        extractCard.add(extractPctRow);
         extractCard.add(Box.createVerticalStrut(4));
-        extractCard.add(createFieldRow("Максимум методов (maxMethods):", methodExtractMaxMethodsSpinner));
+        extractCard.add(extractMtdRow);
         extractCard.add(Box.createVerticalStrut(4));
-        extractCard.add(createFieldRow("Классов-носителей (carriers):", methodExtractCarriersSpinner));
+        extractCard.add(extractCarRow);
         extractCard.add(Box.createVerticalStrut(4));
-        extractCard.add(createFieldRow("Мин. инструкций для извлечения (minInstructions):", methodExtractMinInsnsSpinner));
+        extractCard.add(extractInsnRow);
+        bindToggle(methodExtractionCheck, extractPctRow, extractMtdRow, extractCarRow, extractInsnRow);
         content.add(extractCard);
 
         return wrapInScroll(content);
@@ -1471,99 +1790,135 @@ public final class NullfuscatorFrame extends JFrame {
 
         JPanel clsCard = createSectionPanel("Переименование классов (Class Renamer)");
         clsCard.setLayout(new BoxLayout(clsCard, BoxLayout.Y_AXIS));
-        clsCard.add(renameClassesCheck);
+        clsCard.add(makeMasterCheck(renameClassesCheck));
+        clsCard.add(Box.createVerticalStrut(4));
+        clsCard.add(createSeparator());
         clsCard.add(Box.createVerticalStrut(6));
         clsCard.add(renameMainCheck);
         clsCard.add(Box.createVerticalStrut(4));
-        clsCard.add(createFieldRow("Префикс пакета (prefix):", classPrefixField));
+        JPanel clsPrefixRow = createFieldRow("Префикс пакета (prefix):", classPrefixField);
+        JPanel clsDepthRow = createNumberRow("Длина имен классов (depth):", classDepthSpinner, "симв.");
+        clsCard.add(clsPrefixRow);
         clsCard.add(Box.createVerticalStrut(4));
-        clsCard.add(createFieldRow("Длина имен классов (depth):", classDepthSpinner));
+        clsCard.add(clsDepthRow);
+        bindToggle(renameClassesCheck, renameMainCheck, clsPrefixRow, clsDepthRow);
         content.add(clsCard);
-        content.add(Box.createVerticalStrut(8));
+        content.add(Box.createVerticalStrut(12));
 
         JPanel mtdCard = createSectionPanel("Переименование методов (Method Renamer)");
         mtdCard.setLayout(new BoxLayout(mtdCard, BoxLayout.Y_AXIS));
-        mtdCard.add(renameMethodsCheck);
+        mtdCard.add(makeMasterCheck(renameMethodsCheck));
+        mtdCard.add(Box.createVerticalStrut(4));
+        mtdCard.add(createSeparator());
         mtdCard.add(Box.createVerticalStrut(6));
-        JPanel mtdRow = new JPanel(new GridLayout(1, 2, 6, 4));
+        JPanel mtdRow = new JPanel(new GridLayout(1, 2, 8, 4));
+        mtdRow.setOpaque(false);
         mtdRow.add(renameMethodsPublicCheck);
         mtdRow.add(renameMethodsVirtualCheck);
         mtdCard.add(mtdRow);
         mtdCard.add(Box.createVerticalStrut(4));
-        mtdCard.add(createFieldRow("Длина имен методов (depth):", methodDepthSpinner));
+        JPanel mtdDepthRow = createNumberRow("Длина имен методов (depth):", methodDepthSpinner, "симв.");
+        mtdCard.add(mtdDepthRow);
+        bindToggle(renameMethodsCheck, mtdRow, mtdDepthRow);
         content.add(mtdCard);
-        content.add(Box.createVerticalStrut(8));
+        content.add(Box.createVerticalStrut(12));
 
         JPanel fldCard = createSectionPanel("Переименование полей (Field Renamer)");
         fldCard.setLayout(new BoxLayout(fldCard, BoxLayout.Y_AXIS));
-        fldCard.add(renameFieldsCheck);
+        fldCard.add(makeMasterCheck(renameFieldsCheck));
+        fldCard.add(Box.createVerticalStrut(4));
+        fldCard.add(createSeparator());
         fldCard.add(Box.createVerticalStrut(6));
-        fldCard.add(createFieldRow("Длина имен полей (depth):", fieldDepthSpinner));
+        JPanel fldDepthRow = createNumberRow("Длина имен полей (depth):", fieldDepthSpinner, "симв.");
+        fldCard.add(fldDepthRow);
+        bindToggle(renameFieldsCheck, fldDepthRow);
         content.add(fldCard);
-        content.add(Box.createVerticalStrut(8));
+        content.add(Box.createVerticalStrut(12));
 
         JPanel alphaCard = createSectionPanel("Алфавит переименования (Naming Alphabet)");
         alphaCard.setLayout(new BoxLayout(alphaCard, BoxLayout.Y_AXIS));
         alphaCard.add(createFieldRow("Символы имен (через запятую):", namingAlphabetField));
         content.add(alphaCard);
-        content.add(Box.createVerticalStrut(8));
+        content.add(Box.createVerticalStrut(12));
 
         JPanel recCard = createSectionPanel("Метаданные Records (Record Metadata)");
         recCard.setLayout(new BoxLayout(recCard, BoxLayout.Y_AXIS));
-        recCard.add(recordMetadataCheck);
+        recCard.add(makeMasterCheck(recordMetadataCheck));
+        recCard.add(Box.createVerticalStrut(4));
+        recCard.add(createSeparator());
         recCard.add(Box.createVerticalStrut(6));
         recCard.add(recordEraseIdentityCheck);
         recCard.add(Box.createVerticalStrut(4));
-        recCard.add(createFieldRow("Длина имен компонентов record (depth):", recordDepthSpinner));
+        JPanel recDepthRow = createNumberRow("Длина имен компонентов record (depth):", recordDepthSpinner, "симв.");
+        recCard.add(recDepthRow);
+        bindToggle(recordMetadataCheck, recordEraseIdentityCheck, recDepthRow);
         content.add(recCard);
-        content.add(Box.createVerticalStrut(8));
+        content.add(Box.createVerticalStrut(12));
 
         JPanel resCard = createSectionPanel("Переименование ресурсов (Resource Renamer)");
         resCard.setLayout(new BoxLayout(resCard, BoxLayout.Y_AXIS));
-        resCard.add(resourceRenamerCheck);
+        resCard.add(makeMasterCheck(resourceRenamerCheck));
+        resCard.add(Box.createVerticalStrut(4));
+        resCard.add(createSeparator());
         resCard.add(Box.createVerticalStrut(6));
-        resCard.add(createFieldRow("Длина имен ресурсов (depth):", resourceDepthSpinner));
+        JPanel resDepthRow = createNumberRow("Длина имен ресурсов (depth):", resourceDepthSpinner, "симв.");
+        JPanel resNsRow = createFieldRow("Исключенные namespaces:", resourceExcludeNsField);
+        JPanel resDirsRow = createFieldRow("Исключенные директории:", resourceExcludeDirsField);
+        resCard.add(resDepthRow);
         resCard.add(Box.createVerticalStrut(4));
-        resCard.add(createFieldRow("Исключенные namespaces (через запятую):", resourceExcludeNsField));
+        resCard.add(resNsRow);
         resCard.add(Box.createVerticalStrut(4));
-        resCard.add(createFieldRow("Исключенные директории (через запятую):", resourceExcludeDirsField));
+        resCard.add(resDirsRow);
+        bindToggle(resourceRenamerCheck, resDepthRow, resNsRow, resDirsRow);
         content.add(resCard);
-        content.add(Box.createVerticalStrut(8));
+        content.add(Box.createVerticalStrut(12));
 
         JPanel stripCard = createSectionPanel("Очистка отладочной информации (Source Strip)");
         stripCard.setLayout(new BoxLayout(stripCard, BoxLayout.Y_AXIS));
-        stripCard.add(sourceStripCheck);
+        stripCard.add(makeMasterCheck(sourceStripCheck));
+        stripCard.add(Box.createVerticalStrut(4));
+        stripCard.add(createSeparator());
         stripCard.add(Box.createVerticalStrut(6));
-        JPanel stripGrid = new JPanel(new GridLayout(2, 2, 6, 4));
+        JPanel stripGrid = new JPanel(new GridLayout(2, 2, 8, 4));
+        stripGrid.setOpaque(false);
         stripGrid.add(stripLineNumbersCheck);
         stripGrid.add(stripLocalVarsCheck);
         stripGrid.add(stripSignaturesCheck);
         stripCard.add(stripGrid);
+        bindToggle(sourceStripCheck, stripGrid);
         content.add(stripCard);
-        content.add(Box.createVerticalStrut(8));
+        content.add(Box.createVerticalStrut(12));
 
         JPanel hardCard = createSectionPanel("Очистка метаданных сборщика (Release Hardening)");
         hardCard.setLayout(new BoxLayout(hardCard, BoxLayout.Y_AXIS));
-        hardCard.add(releaseHardeningCheck);
+        hardCard.add(makeMasterCheck(releaseHardeningCheck));
+        hardCard.add(Box.createVerticalStrut(4));
+        hardCard.add(createSeparator());
         hardCard.add(Box.createVerticalStrut(6));
-        JPanel hardGrid = new JPanel(new GridLayout(1, 2, 6, 4));
+        JPanel hardGrid = new JPanel(new GridLayout(1, 2, 8, 4));
+        hardGrid.setOpaque(false);
         hardGrid.add(stripMavenCheck);
         hardGrid.add(stripFabricDescCheck);
         hardCard.add(hardGrid);
+        bindToggle(releaseHardeningCheck, hardGrid);
         content.add(hardCard);
-        content.add(Box.createVerticalStrut(8));
+        content.add(Box.createVerticalStrut(12));
 
         JPanel annoCard = createSectionPanel("Удаление аннотаций (Annotation Sanitizer)");
         annoCard.setLayout(new BoxLayout(annoCard, BoxLayout.Y_AXIS));
-        annoCard.add(annotationSanitizerCheck);
+        annoCard.add(makeMasterCheck(annotationSanitizerCheck));
+        annoCard.add(Box.createVerticalStrut(4));
+        annoCard.add(createSeparator());
         annoCard.add(Box.createVerticalStrut(6));
-        annoCard.add(createFieldRow("Дескрипторы аннотаций (через запятую):", annotationSanitizerDescriptorsField));
+        JPanel annoRow = createFieldRow("Дескрипторы аннотаций:", annotationSanitizerDescriptorsField);
+        annoCard.add(annoRow);
+        bindToggle(annotationSanitizerCheck, annoRow);
         content.add(annoCard);
-        content.add(Box.createVerticalStrut(8));
+        content.add(Box.createVerticalStrut(12));
 
         JPanel mrCard = createSectionPanel("Совместимость с Multi-Release JAR");
         mrCard.setLayout(new BoxLayout(mrCard, BoxLayout.Y_AXIS));
-        mrCard.add(allowMultiReleaseCheck);
+        mrCard.add(makeMasterCheck(allowMultiReleaseCheck));
         content.add(mrCard);
 
         return wrapInScroll(content);
@@ -2230,6 +2585,7 @@ public final class NullfuscatorFrame extends JFrame {
                 coverageEnabledCheck.setSelected(false);
             }
         }
+        updateAllToggles();
     }
 
     private void applyProfileDefaults() {
@@ -2932,6 +3288,7 @@ public final class NullfuscatorFrame extends JFrame {
 
     private JPanel createSectionPanel(String title) {
         JPanel p = new JPanel();
+        p.setBackground(new Color(36, 37, 43));
         p.setBorder(createTitledBorder(title));
         return p;
     }
@@ -2947,13 +3304,21 @@ public final class NullfuscatorFrame extends JFrame {
         return base.deriveFont(style, size);
     }
 
-    private javax.swing.border.TitledBorder createTitledBorder(String title) {
-        return BorderFactory.createTitledBorder(
-                BorderFactory.createLineBorder(new Color(63, 63, 70), 1, true),
+    private javax.swing.border.Border createTitledBorder(String title) {
+        javax.swing.border.TitledBorder tb = BorderFactory.createTitledBorder(
+                BorderFactory.createLineBorder(new Color(68, 70, 80), 1, true),
                 " " + title + " ",
                 javax.swing.border.TitledBorder.LEFT,
                 javax.swing.border.TitledBorder.TOP,
-                safeFont(null, Font.BOLD, 12f)
+                safeFont(null, Font.BOLD, 13f),
+                new Color(244, 244, 246)
+        );
+        return BorderFactory.createCompoundBorder(
+                BorderFactory.createEmptyBorder(4, 2, 8, 2),
+                BorderFactory.createCompoundBorder(
+                        tb,
+                        BorderFactory.createEmptyBorder(8, 12, 10, 12)
+                )
         );
     }
 
@@ -3321,5 +3686,6 @@ public final class NullfuscatorFrame extends JFrame {
             }
         } catch (Exception ignored) {
         }
+        updateAllToggles();
     }
 }
