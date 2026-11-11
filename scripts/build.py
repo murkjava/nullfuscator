@@ -57,6 +57,11 @@ def build(output):
             entries["META-INF/" + resource.relative_to(ROOT).as_posix()] = resource.read_bytes()
         for preset in sorted((ROOT / "config").glob("*.hocon")):
             entries["presets/" + preset.name] = preset.read_bytes()
+        for asset in sorted((ROOT / "assets").glob("*")):
+            if asset.is_file():
+                entries["assets/" + asset.name] = asset.read_bytes()
+                if asset.name == "icon.png":
+                    entries["icon.png"] = asset.read_bytes()
         manifest = b"Manifest-Version: 1.0\r\nMain-Class: com.nullfuscator.obf.core.Main\r\n\r\n"
         staged = work / "obfuscator.jar"
         with zipfile.ZipFile(staged, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as jar:

@@ -4,6 +4,7 @@ import com.nullfuscator.obf.core.BuildInfo;
 import com.nullfuscator.obf.core.Main;
 import com.nullfuscator.obf.core.ObfMapping;
 
+import javax.imageio.ImageIO;
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import javax.swing.filechooser.FileNameExtensionFilter;
@@ -98,10 +99,39 @@ public final class NullfuscatorFrame extends JFrame {
         tabbedPane.addTab("Инфо о маппинге", createMappingInfoPanel());
 
         setContentPane(tabbedPane);
+        setupAppIcon();
         setupGlobalDropTarget();
         loadPreferences();
 
         profileCombo.addActionListener(e -> applyProfileDefaults());
+    }
+
+    private void setupAppIcon() {
+        try {
+            InputStream stream = getClass().getResourceAsStream("/icon.png");
+            if (stream == null) {
+                stream = getClass().getResourceAsStream("/assets/icon.png");
+            }
+            if (stream != null) {
+                Image base = ImageIO.read(stream);
+                if (base != null) {
+                    List<Image> icons = new ArrayList<>();
+                    int[] sizes = {16, 24, 32, 48, 64, 128, 256};
+                    for (int s : sizes) {
+                        icons.add(base.getScaledInstance(s, s, Image.SCALE_SMOOTH));
+                    }
+                    setIconImages(icons);
+
+                    if (Taskbar.isTaskbarSupported()) {
+                        Taskbar taskbar = Taskbar.getTaskbar();
+                        if (taskbar.isSupported(Taskbar.Feature.ICON_IMAGE)) {
+                            taskbar.setIconImage(base);
+                        }
+                    }
+                }
+            }
+        } catch (Exception ignored) {
+        }
     }
 
     private JPanel createObfuscatorPanel() {
