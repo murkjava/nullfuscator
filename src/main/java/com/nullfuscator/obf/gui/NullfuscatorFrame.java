@@ -19,16 +19,55 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.prefs.Preferences;
 import java.util.zip.ZipFile;
 
 public final class NullfuscatorFrame extends JFrame {
 
+    private static final String PREF_PRESET = "preset";
+    private static final String PREF_PROFILE = "profile";
+    private static final String PREF_EXEMPTIONS = "exemptions";
+    private static final String PREF_LIBS = "libraries";
+    private static final String PREF_KEEP_PUBLIC = "keep_public";
+    private static final String PREF_KEEP_VIRTUAL = "keep_virtual";
+    private static final String PREF_KEEP_SIGNATURES = "keep_signatures";
+    private static final String PREF_EXEMPT_MIXINS = "exempt_mixins";
+    private static final String PREF_ALLOW_INCOMPLETE = "allow_incomplete";
+
+    private final Preferences prefs = Preferences.userNodeForPackage(NullfuscatorFrame.class);
+
     private final JTextField inputField = new JTextField();
     private final JTextField outputField = new JTextField();
     private final JComboBox<String> presetCombo = new JComboBox<>(new String[]{"full", "strong", "balanced", "light"});
-    private final JCheckBox fabricModeCheck = new JCheckBox("Режим Fabric / Minecraft мода", true);
-    private final JCheckBox saveMappingCheck = new JCheckBox("Сохранять ProGuard mapping (.map)", true);
+    private final JComboBox<String> profileCombo = new JComboBox<>(new String[]{
+            "Fabric / Quilt мод (Minecraft)",
+            "Spigot / Paper плагин",
+            "Обычное Java приложение / Библиотека",
+            "Пользовательская конфигурация"
+    });
+
     private final JTextField customConfigField = new JTextField();
+    private final JCheckBox saveMappingCheck = new JCheckBox("Сохранять ProGuard mapping (.map)", true);
+
+    private final JTextArea exemptionsArea = new JTextArea();
+    private final JCheckBox exemptMixinsCheck = new JCheckBox("Исключать все миксины (*/mixin/*)", true);
+    private final JCheckBox keepPublicMethodsCheck = new JCheckBox("Не переименовывать публичные методы", true);
+    private final JCheckBox keepVirtualMethodsCheck = new JCheckBox("Не переименовывать виртуальные методы", false);
+    private final JCheckBox keepSignaturesCheck = new JCheckBox("Сохранять сигнатуры дженериков (для Gson/Jackson)", true);
+    private final JCheckBox allowIncompleteClasspathCheck = new JCheckBox("Разрешить неполный класспас (Allow Incomplete Classpath)", true);
+
+    private final JCheckBox stringEncCheck = new JCheckBox("Шифрование строк (Polymorphic Strings)", true);
+    private final JCheckBox numberEncCheck = new JCheckBox("Шифрование чисел (Number Math)", true);
+    private final JCheckBox flowFlattenCheck = new JCheckBox("Сглаживание потока управления (Control Flow)", true);
+    private final JCheckBox antiDecompilerCheck = new JCheckBox("Защита от декомпиляторов (Anti-Decompiler)", true);
+    private final JCheckBox antiDeobfCheck = new JCheckBox("Защита от деобфускаторов (Anti-Deobf AST)", true);
+    private final JCheckBox antiAiCheck = new JCheckBox("Защита от анализа нейросетями (Anti-AI)", true);
+    private final JCheckBox antiDebugCheck = new JCheckBox("Обнаружение отладчиков (Anti-Debug)", true);
+    private final JCheckBox renameClassesCheck = new JCheckBox("Переименование классов (Class Renamer)", true);
+    private final JCheckBox renameMethodsCheck = new JCheckBox("Переименование методов (Method Renamer)", true);
+    private final JCheckBox renameFieldsCheck = new JCheckBox("Переименование полей (Field Renamer)", true);
+    private final JCheckBox resourceRenamerCheck = new JCheckBox("Переименование ресурсов (Resource Renamer)", false);
+
     private final DefaultListModel<String> libsModel = new DefaultListModel<>();
     private final JList<String> libsList = new JList<>(libsModel);
     private final JTextArea logArea = new JTextArea();
@@ -46,18 +85,23 @@ public final class NullfuscatorFrame extends JFrame {
     public NullfuscatorFrame() {
         setTitle("Nullfuscator " + BuildInfo.VERSION + " — Standalone Obfuscator");
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        setSize(1020, 780);
-        setMinimumSize(new Dimension(860, 620));
+        setSize(1060, 800);
+        setMinimumSize(new Dimension(880, 640));
         setLocationRelativeTo(null);
 
         JTabbedPane tabbedPane = new JTabbedPane();
         tabbedPane.setFont(tabbedPane.getFont().deriveFont(Font.BOLD, 13f));
         tabbedPane.addTab("Обфускатор", createObfuscatorPanel());
+        tabbedPane.addTab("Исключения (Exemptions)", createExemptionsPanel());
+        tabbedPane.addTab("Трансформеры", createTransformersPanel());
         tabbedPane.addTab("Демаппинг (Retrace)", createRetracePanel());
         tabbedPane.addTab("Инфо о маппинге", createMappingInfoPanel());
 
         setContentPane(tabbedPane);
         setupGlobalDropTarget();
+        loadPreferences();
+
+        profileCombo.addActionListener(e -> applyProfileDefaults());
     }
 
     private JPanel createObfuscatorPanel() {
@@ -107,7 +151,7 @@ public final class NullfuscatorFrame extends JFrame {
         configPanel.add(filesCard);
         configPanel.add(Box.createVerticalStrut(8));
 
-        JPanel settingsCard = createSectionPanel("Параметры обфускации");
+        JPanel settingsCard = createSectionPanel("Профиль и пресет");
         settingsCard.setLayout(new GridBagLayout());
         GridBagConstraints sgbc = new GridBagConstraints();
         sgbc.insets = new Insets(4, 4, 4, 4);
@@ -116,15 +160,19 @@ public final class NullfuscatorFrame extends JFrame {
         sgbc.gridx = 0;
         sgbc.gridy = 0;
         sgbc.weightx = 0.0;
-        settingsCard.add(new JLabel("Пресет защиты:"), sgbc);
+        settingsCard.add(new JLabel("Тип проекта:"), sgbc);
 
         sgbc.gridx = 1;
-        sgbc.weightx = 0.4;
-        settingsCard.add(presetCombo, sgbc);
+        sgbc.weightx = 0.5;
+        settingsCard.add(profileCombo, sgbc);
 
         sgbc.gridx = 2;
-        sgbc.weightx = 0.6;
-        settingsCard.add(fabricModeCheck, sgbc);
+        sgbc.weightx = 0.0;
+        settingsCard.add(new JLabel("Пресет защиты:"), sgbc);
+
+        sgbc.gridx = 3;
+        sgbc.weightx = 0.3;
+        settingsCard.add(presetCombo, sgbc);
 
         sgbc.gridx = 0;
         sgbc.gridy = 1;
@@ -132,10 +180,13 @@ public final class NullfuscatorFrame extends JFrame {
         settingsCard.add(new JLabel("Кастомный .hocon:"), sgbc);
 
         sgbc.gridx = 1;
-        sgbc.weightx = 0.6;
+        sgbc.gridwidth = 2;
+        sgbc.weightx = 0.7;
+        customConfigField.setToolTipText("Опционально: путь к готовому HOCON файлу (переопределит настройки)");
         settingsCard.add(customConfigField, sgbc);
 
-        sgbc.gridx = 2;
+        sgbc.gridx = 3;
+        sgbc.gridwidth = 1;
         sgbc.weightx = 0.0;
         JPanel cfgBtnGroup = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
         JButton browseCfgBtn = new JButton("Обзор...");
@@ -144,7 +195,6 @@ public final class NullfuscatorFrame extends JFrame {
         clearCfgBtn.addActionListener(e -> customConfigField.setText(""));
         cfgBtnGroup.add(browseCfgBtn);
         cfgBtnGroup.add(clearCfgBtn);
-        cfgBtnGroup.add(saveMappingCheck);
         settingsCard.add(cfgBtnGroup, sgbc);
 
         configPanel.add(settingsCard);
@@ -155,7 +205,7 @@ public final class NullfuscatorFrame extends JFrame {
 
         libsList.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
         JScrollPane libsScroll = new JScrollPane(libsList);
-        libsScroll.setPreferredSize(new Dimension(100, 110));
+        libsScroll.setPreferredSize(new Dimension(100, 105));
         libsCard.add(libsScroll, BorderLayout.CENTER);
 
         JPanel libsBtnBar = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 2));
@@ -176,6 +226,7 @@ public final class NullfuscatorFrame extends JFrame {
         libsBtnBar.add(addLibBtn);
         libsBtnBar.add(removeLibBtn);
         libsBtnBar.add(clearLibsBtn);
+        libsBtnBar.add(saveMappingCheck);
         libsCard.add(libsBtnBar, BorderLayout.SOUTH);
 
         configPanel.add(libsCard);
@@ -236,13 +287,79 @@ public final class NullfuscatorFrame extends JFrame {
                         if (outputField.getText().trim().isEmpty() || outputField.getText().endsWith("-obf.jar")) {
                             outputField.setText(computeDefaultOutput(f));
                         }
-                        if (isFabricJar(f)) {
-                            fabricModeCheck.setSelected(true);
-                        }
+                        detectTargetType(f);
                     }
                 }
             }
         });
+
+        return root;
+    }
+
+    private JPanel createExemptionsPanel() {
+        JPanel root = new JPanel(new BorderLayout(10, 10));
+        root.setBorder(new EmptyBorder(14, 14, 14, 14));
+
+        JPanel rulesPanel = createSectionPanel("Быстрые правила исключений");
+        rulesPanel.setLayout(new GridLayout(3, 2, 8, 8));
+        rulesPanel.add(exemptMixinsCheck);
+        rulesPanel.add(keepSignaturesCheck);
+        rulesPanel.add(keepPublicMethodsCheck);
+        rulesPanel.add(keepVirtualMethodsCheck);
+        rulesPanel.add(allowIncompleteClasspathCheck);
+        root.add(rulesPanel, BorderLayout.NORTH);
+
+        JPanel customPanel = createSectionPanel("Пакеты и классы для исключения (по одному в строке)");
+        customPanel.setLayout(new BorderLayout(6, 6));
+
+        exemptionsArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
+        exemptionsArea.setToolTipText("Примеры:\nru.myproject.gui\ndev.ranked.ac.security.*\ncom.example.api.PublicClass");
+        JScrollPane scroll = new JScrollPane(exemptionsArea);
+        customPanel.add(scroll, BorderLayout.CENTER);
+
+        JLabel hintLabel = new JLabel("<html><font color='#a1a1aa'>Укажи пакеты или классы без обфускации. Например: <code>com.mycompany.api.*</code> или <code>ru.project.config.MyConfig</code></font></html>");
+        customPanel.add(hintLabel, BorderLayout.SOUTH);
+
+        root.add(customPanel, BorderLayout.CENTER);
+
+        return root;
+    }
+
+    private JPanel createTransformersPanel() {
+        JPanel root = new JPanel(new BorderLayout(10, 10));
+        root.setBorder(new EmptyBorder(14, 14, 14, 14));
+
+        JPanel transCard = createSectionPanel("Активные модули защиты (Transformers)");
+        transCard.setLayout(new GridLayout(6, 2, 10, 10));
+
+        transCard.add(stringEncCheck);
+        transCard.add(numberEncCheck);
+        transCard.add(flowFlattenCheck);
+        transCard.add(antiDecompilerCheck);
+        transCard.add(antiDeobfCheck);
+        transCard.add(antiAiCheck);
+        transCard.add(antiDebugCheck);
+        transCard.add(renameClassesCheck);
+        transCard.add(renameMethodsCheck);
+        transCard.add(renameFieldsCheck);
+        transCard.add(resourceRenamerCheck);
+
+        root.add(transCard, BorderLayout.NORTH);
+
+        JPanel infoPanel = createSectionPanel("Подсказка по режимам");
+        infoPanel.setLayout(new BorderLayout(6, 6));
+        JTextArea infoText = new JTextArea();
+        infoText.setEditable(false);
+        infoText.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 12));
+        infoText.setBackground(root.getBackground());
+        infoText.setText(
+                "• Для Fabric/Forge модов обязательно отключайте 'Переименование ресурсов' (иначе ломаются lang/*.json и текстуры).\n" +
+                "• 'Не переименовывать публичные методы' рекомендуется для плагинов и модов с открытыми API и событиями.\n" +
+                "• 'Сохранять сигнатуры дженериков' необходимо, если используется сериализация Gson или Jackson.\n" +
+                "• При возникновении проблем с производительностью отключите Control Flow или выберите пресет Balanced/Light."
+        );
+        infoPanel.add(infoText, BorderLayout.CENTER);
+        root.add(infoPanel, BorderLayout.CENTER);
 
         return root;
     }
@@ -392,12 +509,54 @@ public final class NullfuscatorFrame extends JFrame {
     private void handleSelectedInputJar(File jar) {
         inputField.setText(jar.getAbsolutePath());
         outputField.setText(computeDefaultOutput(jar));
-        if (isFabricJar(jar)) {
-            fabricModeCheck.setSelected(true);
-            log("[*] Обнаружен fabric.mod.json: активирован режим Fabric мода");
-            if (libsModel.isEmpty()) {
-                runGradleScan();
+        detectTargetType(jar);
+    }
+
+    private void detectTargetType(File jar) {
+        if (!jar.isFile()) {
+            return;
+        }
+
+        try (ZipFile z = new ZipFile(jar)) {
+            if (z.getEntry("fabric.mod.json") != null) {
+                profileCombo.setSelectedIndex(0);
+                log("[*] Обнаружен fabric.mod.json: активирован профиль 'Fabric / Quilt мод'");
+                if (libsModel.isEmpty()) {
+                    runGradleScan();
+                }
+            } else if (z.getEntry("plugin.yml") != null) {
+                profileCombo.setSelectedIndex(1);
+                log("[*] Обнаружен plugin.yml: активирован профиль 'Spigot / Paper плагин'");
             }
+        } catch (Exception ignored) {
+        }
+    }
+
+    private void applyProfileDefaults() {
+        int index = profileCombo.getSelectedIndex();
+        switch (index) {
+            case 0 -> {
+                resourceRenamerCheck.setSelected(false);
+                allowIncompleteClasspathCheck.setSelected(true);
+                keepSignaturesCheck.setSelected(true);
+                exemptMixinsCheck.setSelected(true);
+                keepPublicMethodsCheck.setSelected(false);
+            }
+            case 1 -> {
+                resourceRenamerCheck.setSelected(false);
+                allowIncompleteClasspathCheck.setSelected(true);
+                keepSignaturesCheck.setSelected(true);
+                exemptMixinsCheck.setSelected(false);
+                keepPublicMethodsCheck.setSelected(true);
+            }
+            case 2 -> {
+                resourceRenamerCheck.setSelected(false);
+                allowIncompleteClasspathCheck.setSelected(true);
+                keepSignaturesCheck.setSelected(false);
+                exemptMixinsCheck.setSelected(false);
+                keepPublicMethodsCheck.setSelected(false);
+            }
+            default -> {}
         }
     }
 
@@ -417,8 +576,92 @@ public final class NullfuscatorFrame extends JFrame {
         } else if (!found.isEmpty()) {
             log("[*] Все найденные библиотеки уже есть в списке (" + found.size() + ")");
         } else {
-            log("[!] В ~/.gradle/caches не найдено известных библиотек (Fabric/Minecraft/Gson)");
+            log("[!] В ~/.gradle/caches не найдено библиотек");
         }
+    }
+
+    private String buildHoconConfig(String basePreset) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("baseConfig = \"").append(basePreset).append(".hocon\"\n\n");
+
+        sb.append("compatibility {\n");
+        sb.append("  allowMultiReleaseRename: true\n");
+        sb.append("  allowIncompleteClasspath: ").append(allowIncompleteClasspathCheck.isSelected()).append("\n");
+        sb.append("}\n\n");
+
+        sb.append("sourceStrip {\n");
+        sb.append("  stripSignatures: ").append(!keepSignaturesCheck.isSelected()).append("\n");
+        sb.append("}\n\n");
+
+        sb.append("resourceRenamer.enabled = ").append(resourceRenamerCheck.isSelected()).append("\n");
+        sb.append("stringEncryption.enabled = ").append(stringEncCheck.isSelected()).append("\n");
+        sb.append("numberEncryption.enabled = ").append(numberEncCheck.isSelected()).append("\n");
+        sb.append("flatten.enabled = ").append(flowFlattenCheck.isSelected()).append("\n");
+        sb.append("antiDecompiler.enabled = ").append(antiDecompilerCheck.isSelected()).append("\n");
+        sb.append("antiDeobf.enabled = ").append(antiDeobfCheck.isSelected()).append("\n");
+        sb.append("antiAI.enabled = ").append(antiAiCheck.isSelected()).append("\n");
+        sb.append("antiDebug.enabled = ").append(antiDebugCheck.isSelected()).append("\n");
+        sb.append("classRenamer.enabled = ").append(renameClassesCheck.isSelected()).append("\n");
+        sb.append("fieldRenamer.enabled = ").append(renameFieldsCheck.isSelected()).append("\n");
+
+        sb.append("methodRenamer {\n");
+        sb.append("  enabled: ").append(renameMethodsCheck.isSelected()).append("\n");
+        sb.append("  renamePublic: ").append(!keepPublicMethodsCheck.isSelected()).append("\n");
+        sb.append("  renameVirtual: ").append(!keepVirtualMethodsCheck.isSelected()).append("\n");
+        sb.append("}\n\n");
+
+        List<String> exemptions = new ArrayList<>();
+        if (exemptMixinsCheck.isSelected()) {
+            exemptions.add("\"class{^.*/mixin/}\"");
+            exemptions.add("\"class{^.*/mixins/}\"");
+        }
+
+        String raw = exemptionsArea.getText();
+        if (raw != null && !raw.isBlank()) {
+            for (String line : raw.split("\n")) {
+                String item = line.trim();
+                if (item.isEmpty() || item.startsWith("#")) {
+                    continue;
+                }
+                String converted = convertUserExemptionToPattern(item);
+                if (converted != null) {
+                    exemptions.add("\"" + converted + "\"");
+                }
+            }
+        }
+
+        if (!exemptions.isEmpty()) {
+            sb.append("defaults.exempt = [\n");
+            for (int i = 0; i < exemptions.size(); i++) {
+                sb.append("  ").append(exemptions.get(i));
+                if (i < exemptions.size() - 1) {
+                    sb.append(",");
+                }
+                sb.append("\n");
+            }
+            sb.append("]\n");
+        }
+
+        return sb.toString();
+    }
+
+    private String convertUserExemptionToPattern(String item) {
+        if (item.startsWith("class{") || item.startsWith("method{") || item.startsWith("field{")) {
+            return item;
+        }
+
+        String clean = item.replace('.', '/');
+        if (clean.endsWith("/*") || clean.endsWith(".*")) {
+            String pkg = clean.substring(0, clean.length() - 2);
+            return "class{^" + pkg + "/}";
+        }
+        if (clean.endsWith("/")) {
+            return "class{^" + clean + "}";
+        }
+        if (clean.contains("/")) {
+            return "class{^" + clean + "($|/)}";
+        }
+        return "class{^" + clean + "$}";
     }
 
     private void startObfuscation() {
@@ -450,7 +693,6 @@ public final class NullfuscatorFrame extends JFrame {
         log("[*] Выход: " + outFile.getAbsolutePath());
 
         String preset = (String) presetCombo.getSelectedItem();
-        boolean fabricMode = fabricModeCheck.isSelected();
         boolean saveMap = saveMappingCheck.isSelected();
         String customCfg = customConfigField.getText().trim();
 
@@ -459,9 +701,9 @@ public final class NullfuscatorFrame extends JFrame {
             libs.add(libsModel.get(i));
         }
 
-        SwingWorker<Boolean, String> worker = new SwingWorker<>() {
-            private String errorDetail = null;
+        savePreferences();
 
+        SwingWorker<Boolean, String> worker = new SwingWorker<>() {
             @Override
             protected Boolean doInBackground() {
                 Path tempConfig = null;
@@ -495,27 +737,12 @@ public final class NullfuscatorFrame extends JFrame {
                     if (!customCfg.isEmpty()) {
                         args.add("--config");
                         args.add(customCfg);
-                    } else if (fabricMode) {
-                        tempConfig = Files.createTempFile("nullfuscator-fabric-", ".hocon");
-                        String cfgContent = """
-                                baseConfig = "%s.hocon"
-                                resourceRenamer.enabled = false
-                                compatibility {
-                                  allowMultiReleaseRename: true
-                                  allowIncompleteClasspath: true
-                                }
-                                sourceStrip { stripSignatures: false }
-                                defaults.exempt = [
-                                  "class{^.*/mixin/}",
-                                  "class{^.*/mixins/}"
-                                ]
-                                """.formatted(preset);
+                    } else {
+                        tempConfig = Files.createTempFile("nullfuscator-gui-", ".hocon");
+                        String cfgContent = buildHoconConfig(preset);
                         Files.writeString(tempConfig, cfgContent, StandardCharsets.UTF_8);
                         args.add("--config");
                         args.add(tempConfig.toAbsolutePath().toString());
-                    } else {
-                        args.add("--preset");
-                        args.add(preset);
                     }
 
                     for (String lib : libs) {
@@ -530,7 +757,6 @@ public final class NullfuscatorFrame extends JFrame {
                     Main.run(args.toArray(new String[0]));
                     return true;
                 } catch (Throwable t) {
-                    errorDetail = t.getMessage();
                     publish("[x] Ошибка: " + (t.getMessage() != null ? t.getMessage() : t.toString()));
                     StringWriter sw = new StringWriter();
                     t.printStackTrace(new PrintWriter(sw));
@@ -658,17 +884,6 @@ public final class NullfuscatorFrame extends JFrame {
         });
     }
 
-    private boolean isFabricJar(File file) {
-        if (file == null || !file.isFile()) {
-            return false;
-        }
-        try (ZipFile z = new ZipFile(file)) {
-            return z.getEntry("fabric.mod.json") != null;
-        } catch (Exception e) {
-            return false;
-        }
-    }
-
     private String computeDefaultOutput(File input) {
         String name = input.getName();
         int dot = name.lastIndexOf('.');
@@ -716,5 +931,54 @@ public final class NullfuscatorFrame extends JFrame {
                 }
             }
         });
+    }
+
+    private void savePreferences() {
+        try {
+            prefs.put(PREF_PRESET, (String) presetCombo.getSelectedItem());
+            prefs.putInt(PREF_PROFILE, profileCombo.getSelectedIndex());
+            prefs.put(PREF_EXEMPTIONS, exemptionsArea.getText());
+            prefs.putBoolean(PREF_KEEP_PUBLIC, keepPublicMethodsCheck.isSelected());
+            prefs.putBoolean(PREF_KEEP_VIRTUAL, keepVirtualMethodsCheck.isSelected());
+            prefs.putBoolean(PREF_KEEP_SIGNATURES, keepSignaturesCheck.isSelected());
+            prefs.putBoolean(PREF_EXEMPT_MIXINS, exemptMixinsCheck.isSelected());
+            prefs.putBoolean(PREF_ALLOW_INCOMPLETE, allowIncompleteClasspathCheck.isSelected());
+
+            List<String> libs = new ArrayList<>();
+            for (int i = 0; i < libsModel.size(); i++) {
+                libs.add(libsModel.get(i));
+            }
+            prefs.put(PREF_LIBS, String.join(File.pathSeparator, libs));
+        } catch (Exception ignored) {
+        }
+    }
+
+    private void loadPreferences() {
+        try {
+            String p = prefs.get(PREF_PRESET, "full");
+            presetCombo.setSelectedItem(p);
+
+            int prof = prefs.getInt(PREF_PROFILE, 0);
+            profileCombo.setSelectedIndex(Math.max(0, Math.min(prof, profileCombo.getItemCount() - 1)));
+
+            String ex = prefs.get(PREF_EXEMPTIONS, "");
+            exemptionsArea.setText(ex);
+
+            keepPublicMethodsCheck.setSelected(prefs.getBoolean(PREF_KEEP_PUBLIC, true));
+            keepVirtualMethodsCheck.setSelected(prefs.getBoolean(PREF_KEEP_VIRTUAL, false));
+            keepSignaturesCheck.setSelected(prefs.getBoolean(PREF_KEEP_SIGNATURES, true));
+            exemptMixinsCheck.setSelected(prefs.getBoolean(PREF_EXEMPT_MIXINS, true));
+            allowIncompleteClasspathCheck.setSelected(prefs.getBoolean(PREF_ALLOW_INCOMPLETE, true));
+
+            String libsStr = prefs.get(PREF_LIBS, "");
+            if (!libsStr.isEmpty()) {
+                for (String part : libsStr.split(java.util.regex.Pattern.quote(File.pathSeparator))) {
+                    if (!part.isBlank() && new File(part).exists() && !libsModel.contains(part)) {
+                        libsModel.addElement(part);
+                    }
+                }
+            }
+        } catch (Exception ignored) {
+        }
     }
 }
