@@ -13,6 +13,12 @@ import java.util.List;
 public final class Main {
 
     public static void main(String[] args) {
+        if (args.length == 0 || (args.length == 1 && "--gui".equals(args[0]))) {
+            if (!java.awt.GraphicsEnvironment.isHeadless()) {
+                com.nullfuscator.obf.gui.NullfuscatorGui.launch();
+                return;
+            }
+        }
         try {
             run(args);
         } catch (Exception e) {
@@ -25,7 +31,7 @@ public final class Main {
         }
     }
 
-    private static void run(String[] args) throws Exception {
+    public static void run(String[] args) throws Exception {
         for (String a : args) {
             if ("--no-color".equals(a)) {
                 Ansi.setEnabled(false);
@@ -308,6 +314,7 @@ public final class Main {
             "--verbose", "-v",
             "--quiet", "-q",
             "--no-color",
+            "--gui",
             "--help", "-h",
             "--version", "-V"
     );
