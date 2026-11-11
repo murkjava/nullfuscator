@@ -40,9 +40,9 @@ public final class NullfuscatorFrame extends JFrame {
     private final JTextField outputField = new JTextField();
     private final JComboBox<String> presetCombo = new JComboBox<>(new String[]{"full", "strong", "balanced", "light"});
     private final JComboBox<String> profileCombo = new JComboBox<>(new String[]{
+            "Обычное Java приложение / Библиотека",
             "Fabric / Quilt мод (Minecraft)",
             "Spigot / Paper плагин",
-            "Обычное Java приложение / Библиотека",
             "Пользовательская конфигурация"
     });
 
@@ -50,10 +50,10 @@ public final class NullfuscatorFrame extends JFrame {
     private final JCheckBox saveMappingCheck = new JCheckBox("Сохранять ProGuard mapping (.map)", true);
 
     private final JTextArea exemptionsArea = new JTextArea();
-    private final JCheckBox exemptMixinsCheck = new JCheckBox("Исключать все миксины (*/mixin/*)", true);
-    private final JCheckBox keepPublicMethodsCheck = new JCheckBox("Не переименовывать публичные методы", true);
+    private final JCheckBox exemptMixinsCheck = new JCheckBox("Исключать все миксины (*/mixin/*)", false);
+    private final JCheckBox keepPublicMethodsCheck = new JCheckBox("Не переименовывать публичные методы", false);
     private final JCheckBox keepVirtualMethodsCheck = new JCheckBox("Не переименовывать виртуальные методы", false);
-    private final JCheckBox keepSignaturesCheck = new JCheckBox("Сохранять сигнатуры дженериков (для Gson/Jackson)", true);
+    private final JCheckBox keepSignaturesCheck = new JCheckBox("Сохранять сигнатуры дженериков (для Gson/Jackson)", false);
     private final JCheckBox allowIncompleteClasspathCheck = new JCheckBox("Разрешить неполный класспас (Allow Incomplete Classpath)", true);
 
     private final JCheckBox stringEncCheck = new JCheckBox("Шифрование строк (Polymorphic Strings)", true);
@@ -519,13 +519,13 @@ public final class NullfuscatorFrame extends JFrame {
 
         try (ZipFile z = new ZipFile(jar)) {
             if (z.getEntry("fabric.mod.json") != null) {
-                profileCombo.setSelectedIndex(0);
+                profileCombo.setSelectedIndex(1);
                 log("[*] Обнаружен fabric.mod.json: активирован профиль 'Fabric / Quilt мод'");
                 if (libsModel.isEmpty()) {
                     runGradleScan();
                 }
             } else if (z.getEntry("plugin.yml") != null) {
-                profileCombo.setSelectedIndex(1);
+                profileCombo.setSelectedIndex(2);
                 log("[*] Обнаружен plugin.yml: активирован профиль 'Spigot / Paper плагин'");
             }
         } catch (Exception ignored) {
@@ -538,23 +538,23 @@ public final class NullfuscatorFrame extends JFrame {
             case 0 -> {
                 resourceRenamerCheck.setSelected(false);
                 allowIncompleteClasspathCheck.setSelected(true);
-                keepSignaturesCheck.setSelected(true);
-                exemptMixinsCheck.setSelected(true);
+                keepSignaturesCheck.setSelected(false);
+                exemptMixinsCheck.setSelected(false);
                 keepPublicMethodsCheck.setSelected(false);
             }
             case 1 -> {
                 resourceRenamerCheck.setSelected(false);
                 allowIncompleteClasspathCheck.setSelected(true);
                 keepSignaturesCheck.setSelected(true);
-                exemptMixinsCheck.setSelected(false);
-                keepPublicMethodsCheck.setSelected(true);
+                exemptMixinsCheck.setSelected(true);
+                keepPublicMethodsCheck.setSelected(false);
             }
             case 2 -> {
                 resourceRenamerCheck.setSelected(false);
                 allowIncompleteClasspathCheck.setSelected(true);
-                keepSignaturesCheck.setSelected(false);
+                keepSignaturesCheck.setSelected(true);
                 exemptMixinsCheck.setSelected(false);
-                keepPublicMethodsCheck.setSelected(false);
+                keepPublicMethodsCheck.setSelected(true);
             }
             default -> {}
         }
@@ -975,10 +975,10 @@ public final class NullfuscatorFrame extends JFrame {
             String ex = prefs.get(PREF_EXEMPTIONS, "");
             exemptionsArea.setText(ex);
 
-            keepPublicMethodsCheck.setSelected(prefs.getBoolean(PREF_KEEP_PUBLIC, true));
+            keepPublicMethodsCheck.setSelected(prefs.getBoolean(PREF_KEEP_PUBLIC, false));
             keepVirtualMethodsCheck.setSelected(prefs.getBoolean(PREF_KEEP_VIRTUAL, false));
-            keepSignaturesCheck.setSelected(prefs.getBoolean(PREF_KEEP_SIGNATURES, true));
-            exemptMixinsCheck.setSelected(prefs.getBoolean(PREF_EXEMPT_MIXINS, true));
+            keepSignaturesCheck.setSelected(prefs.getBoolean(PREF_KEEP_SIGNATURES, false));
+            exemptMixinsCheck.setSelected(prefs.getBoolean(PREF_EXEMPT_MIXINS, false));
             allowIncompleteClasspathCheck.setSelected(prefs.getBoolean(PREF_ALLOW_INCOMPLETE, true));
 
             String libsStr = prefs.get(PREF_LIBS, "");
