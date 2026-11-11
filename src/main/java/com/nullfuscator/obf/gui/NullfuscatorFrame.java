@@ -90,7 +90,7 @@ public final class NullfuscatorFrame extends JFrame {
         setLocationRelativeTo(null);
 
         JTabbedPane tabbedPane = new JTabbedPane();
-        tabbedPane.setFont(tabbedPane.getFont().deriveFont(Font.BOLD, 13f));
+        tabbedPane.setFont(safeFont(tabbedPane.getFont(), Font.BOLD, 13f));
         tabbedPane.addTab("Обфускатор", createObfuscatorPanel());
         tabbedPane.addTab("Исключения (Exemptions)", createExemptionsPanel());
         tabbedPane.addTab("Трансформеры", createTransformersPanel());
@@ -259,7 +259,7 @@ public final class NullfuscatorFrame extends JFrame {
         progressBar.setString("Готов к работе");
         progressBar.setPreferredSize(new Dimension(200, 24));
 
-        obfuscateBtn.setFont(obfuscateBtn.getFont().deriveFont(Font.BOLD, 14f));
+        obfuscateBtn.setFont(safeFont(obfuscateBtn.getFont(), Font.BOLD, 14f));
         obfuscateBtn.setPreferredSize(new Dimension(240, 42));
         obfuscateBtn.setBackground(new Color(37, 99, 235));
         obfuscateBtn.setForeground(Color.WHITE);
@@ -395,7 +395,7 @@ public final class NullfuscatorFrame extends JFrame {
 
         JPanel bottom = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 4));
         JButton retraceBtn = new JButton("⚡ Восстановить стектрейс");
-        retraceBtn.setFont(retraceBtn.getFont().deriveFont(Font.BOLD, 13f));
+        retraceBtn.setFont(safeFont(retraceBtn.getFont(), Font.BOLD, 13f));
         retraceBtn.addActionListener(e -> runRetrace());
 
         JButton clearBtn = new JButton("Очистить");
@@ -432,7 +432,7 @@ public final class NullfuscatorFrame extends JFrame {
 
         JPanel bottom = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 4));
         JButton inspectBtn = new JButton("🔍 Анализ маппинга");
-        inspectBtn.setFont(inspectBtn.getFont().deriveFont(Font.BOLD, 13f));
+        inspectBtn.setFont(safeFont(inspectBtn.getFont(), Font.BOLD, 13f));
         inspectBtn.addActionListener(e -> runMappingInfo());
         bottom.add(inspectBtn);
         root.add(bottom, BorderLayout.SOUTH);
@@ -899,13 +899,24 @@ public final class NullfuscatorFrame extends JFrame {
         return p;
     }
 
+    private static Font safeFont(Font font, int style, float size) {
+        if (font != null) {
+            return font.deriveFont(style, size);
+        }
+        Font base = UIManager.getFont("Label.font");
+        if (base == null) {
+            base = new Font(Font.SANS_SERIF, Font.PLAIN, 12);
+        }
+        return base.deriveFont(style, size);
+    }
+
     private javax.swing.border.TitledBorder createTitledBorder(String title) {
         return BorderFactory.createTitledBorder(
                 BorderFactory.createLineBorder(new Color(63, 63, 70), 1, true),
                 " " + title + " ",
                 javax.swing.border.TitledBorder.LEFT,
                 javax.swing.border.TitledBorder.TOP,
-                getFont().deriveFont(Font.BOLD, 12f)
+                safeFont(null, Font.BOLD, 12f)
         );
     }
 
