@@ -217,7 +217,7 @@ public final class NullfuscatorFrame extends JFrame {
     private final JTextArea logArea = new JTextArea();
     private final JProgressBar progressBar = new JProgressBar();
     private final JLabel statusLabel = new JLabel("Готов к работе");
-    private final JButton obfuscateBtn = new JButton("⚡ Запустить обфускацию");
+    private final JButton obfuscateBtn = new JButton("Запустить обфускацию");
 
     private final JTextField retraceMapField = new JTextField();
     private final JTextArea retraceInArea = new JTextArea();
@@ -340,7 +340,7 @@ public final class NullfuscatorFrame extends JFrame {
         JPanel outBtnGroup = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
         JButton browseOutputBtn = new JButton("Обзор...");
         browseOutputBtn.addActionListener(e -> chooseOutputJar());
-        JButton revealOutputBtn = new JButton("📁 Папка");
+        JButton revealOutputBtn = new JButton("Папка");
         revealOutputBtn.setToolTipText("Показать расположение выходного файла в проводнике");
         revealOutputBtn.addActionListener(e -> {
             String p = outputField.getText().trim();
@@ -388,10 +388,10 @@ public final class NullfuscatorFrame extends JFrame {
         seedField.setToolTipText("Опциональный фиксированный сид для reproducible build");
         seedBox.add(seedField, BorderLayout.CENTER);
         JPanel seedTools = new JPanel(new FlowLayout(FlowLayout.LEFT, 2, 0));
-        JButton randSeedBtn = new JButton("🎲");
+        JButton randSeedBtn = new JButton("Rand");
         randSeedBtn.setToolTipText("Сгенерировать случайный сид");
         randSeedBtn.addActionListener(e -> seedField.setText(String.valueOf(Math.abs(new SecureRandom().nextLong()))));
-        JButton clearSeedBtn = new JButton("✖");
+        JButton clearSeedBtn = new JButton("X");
         clearSeedBtn.setToolTipText("Очистить сид");
         clearSeedBtn.addActionListener(e -> seedField.setText(""));
         seedTools.add(randSeedBtn);
@@ -418,7 +418,7 @@ public final class NullfuscatorFrame extends JFrame {
         browseCfgBtn.addActionListener(e -> chooseConfigFile());
         JButton clearCfgBtn = new JButton("Сбросить");
         clearCfgBtn.addActionListener(e -> customConfigField.setText(""));
-        JButton previewCfgBtn = new JButton("👁 HOCON");
+        JButton previewCfgBtn = new JButton("HOCON");
         previewCfgBtn.setToolTipText("Предпросмотр сгенерированного HOCON конфига");
         previewCfgBtn.addActionListener(e -> showHoconPreview());
         cfgBtnGroup.add(browseCfgBtn);
@@ -438,20 +438,30 @@ public final class NullfuscatorFrame extends JFrame {
         libsCard.add(libsScroll, BorderLayout.CENTER);
 
         JPanel libsBtnBar = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 2));
-        JButton autoScanBtn = new JButton("🔍 Найти в .gradle");
-        autoScanBtn.setToolTipText("Автоматически сканирует ~/.gradle/caches на наличие Minecraft, Fabric Loader, Fabric API, Gson");
-        autoScanBtn.addActionListener(e -> runGradleScan());
+        JButton scanBtn = new JButton("Найти в...");
+        scanBtn.setToolTipText("Поиск библиотек в Gradle, Maven или выбранной папке");
+        JPopupMenu scanMenu = new JPopupMenu();
+        JMenuItem gradleItem = new JMenuItem("В .gradle");
+        gradleItem.addActionListener(e -> runGradleScan());
+        JMenuItem mavenItem = new JMenuItem("В .maven");
+        mavenItem.addActionListener(e -> runMavenScan());
+        JMenuItem customItem = new JMenuItem("Свой выбор...");
+        customItem.addActionListener(e -> runCustomFolderScan());
+        scanMenu.add(gradleItem);
+        scanMenu.add(mavenItem);
+        scanMenu.add(customItem);
+        scanBtn.addActionListener(e -> scanMenu.show(scanBtn, 0, scanBtn.getHeight()));
 
-        JButton addLibBtn = new JButton("➕ Добавить JAR...");
+        JButton addLibBtn = new JButton("+ Добавить JAR...");
         addLibBtn.addActionListener(e -> addLibraryFile());
 
-        JButton removeLibBtn = new JButton("➖ Удалить");
+        JButton removeLibBtn = new JButton("- Удалить");
         removeLibBtn.addActionListener(e -> removeSelectedLibs());
 
         JButton clearLibsBtn = new JButton("Очистить все");
         clearLibsBtn.addActionListener(e -> libsModel.clear());
 
-        libsBtnBar.add(autoScanBtn);
+        libsBtnBar.add(scanBtn);
         libsBtnBar.add(addLibBtn);
         libsBtnBar.add(removeLibBtn);
         libsBtnBar.add(clearLibsBtn);
@@ -534,7 +544,7 @@ public final class NullfuscatorFrame extends JFrame {
         jarTreeInfoLabel.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 12));
         topBar.add(jarTreeInfoLabel, BorderLayout.CENTER);
 
-        JButton refreshBtn = new JButton("🔄 Перечитать JAR");
+        JButton refreshBtn = new JButton("Обновить JAR");
         refreshBtn.addActionListener(e -> {
             String p = inputField.getText().trim();
             if (!p.isEmpty()) {
@@ -575,7 +585,7 @@ public final class NullfuscatorFrame extends JFrame {
             }
         });
 
-        JLabel footer = new JLabel("<html><font color='#a1a1aa'>💡 Кликни правой кнопкой мыши по классу или пакету, чтобы добавить или убрать исключение.</font></html>");
+        JLabel footer = new JLabel("<html><font color='#a1a1aa'>Подсказка: кликни правой кнопкой мыши по классу или пакету, чтобы добавить или убрать исключение.</font></html>");
         root.add(footer, BorderLayout.SOUTH);
 
         return root;
@@ -590,17 +600,17 @@ public final class NullfuscatorFrame extends JFrame {
         boolean exempt = isNodeExempted(node);
 
         if (exempt) {
-            JMenuItem removeExemptItem = new JMenuItem("❌ Убрать из исключений");
+            JMenuItem removeExemptItem = new JMenuItem("Убрать из исключений");
             removeExemptItem.setFont(safeFont(removeExemptItem.getFont(), Font.BOLD, 12f));
             removeExemptItem.addActionListener(e -> removeNodeFromExemptions(node));
             menu.add(removeExemptItem);
         } else {
-            JMenuItem addExemptItem = new JMenuItem("🛡 Добавить в исключения");
+            JMenuItem addExemptItem = new JMenuItem("Добавить в исключения");
             addExemptItem.setFont(safeFont(addExemptItem.getFont(), Font.BOLD, 12f));
             addExemptItem.addActionListener(e -> addSelectedTreeNodesToExemptions(false));
             menu.add(addExemptItem);
 
-            String pkgLabel = node.isLeaf() ? "🛡 Исключить весь пакет (*)" : "🛡 Исключить всю папку (*)";
+            String pkgLabel = node.isLeaf() ? "Исключить весь пакет (*)" : "Исключить всю папку (*)";
             JMenuItem addPkgItem = new JMenuItem(pkgLabel);
             addPkgItem.addActionListener(e -> addSelectedTreeNodesToExemptions(true));
             menu.add(addPkgItem);
@@ -608,7 +618,7 @@ public final class NullfuscatorFrame extends JFrame {
 
         menu.addSeparator();
 
-        JMenuItem copyItem = new JMenuItem("📋 Скопировать полное имя");
+        JMenuItem copyItem = new JMenuItem("Скопировать полное имя");
         copyItem.addActionListener(e -> copySelectedTreeNodeName());
         menu.add(copyItem);
 
@@ -1457,9 +1467,9 @@ public final class NullfuscatorFrame extends JFrame {
         infoText.setFont(safeFont(null, Font.PLAIN, 12.5f));
         infoText.setBackground(root.getBackground());
         infoText.setText(
-                "• Бюджеты роста гарантируют, что итоговый размер JAR или объем байткода не превысит лимиты.\n" +
-                "• Значение -1 в процентах отключает относительную проверку (без ограничений на рост).\n" +
-                "• Политика Coverage позволяет требовать, чтобы обфускация затронула не менее N% целевых методов."
+                "- Бюджеты роста гарантируют, что итоговый размер JAR или объем байткода не превысит лимиты.\n" +
+                "- Значение -1 в процентах отключает относительную проверку (без ограничений на рост).\n" +
+                "- Политика Coverage позволяет требовать, чтобы обфускация затронула не менее N% целевых методов."
         );
         infoCard.add(infoText, BorderLayout.CENTER);
         content.add(infoCard);
@@ -1474,7 +1484,7 @@ public final class NullfuscatorFrame extends JFrame {
 
         JPanel topBar = new JPanel(new BorderLayout(8, 0));
         topBar.setBorder(new EmptyBorder(0, 0, 6, 0));
-        JButton syncBtn = new JButton("↺ Применить настройки текущего пресета ко всем трансформерам");
+        JButton syncBtn = new JButton("Применить настройки пресета ко всем трансформерам");
         syncBtn.setToolTipText("Сбрасывает переключатели и параметры трансформеров к значениям выбранного пресета");
         syncBtn.setFont(safeFont(syncBtn.getFont(), Font.PLAIN, 12.5f));
         syncBtn.addActionListener(e -> applyPresetDefaults((String) presetCombo.getSelectedItem()));
@@ -1990,7 +2000,7 @@ public final class NullfuscatorFrame extends JFrame {
         root.add(split, BorderLayout.CENTER);
 
         JPanel bottom = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 4));
-        JButton retraceBtn = new JButton("⚡ Восстановить стектрейс");
+        JButton retraceBtn = new JButton("Восстановить стектрейс");
         retraceBtn.setFont(safeFont(retraceBtn.getFont(), Font.BOLD, 13f));
         retraceBtn.addActionListener(e -> runRetrace());
 
@@ -2027,7 +2037,7 @@ public final class NullfuscatorFrame extends JFrame {
         root.add(center, BorderLayout.CENTER);
 
         JPanel bottom = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 4));
-        JButton inspectBtn = new JButton("🔍 Анализ маппинга");
+        JButton inspectBtn = new JButton("Анализ маппинга");
         inspectBtn.setFont(safeFont(inspectBtn.getFont(), Font.BOLD, 13f));
         inspectBtn.addActionListener(e -> runMappingInfo());
         bottom.add(inspectBtn);
@@ -2656,9 +2666,7 @@ public final class NullfuscatorFrame extends JFrame {
         }
     }
 
-    private void runGradleScan() {
-        log("[*] Поиск библиотек в ~/.gradle/caches...");
-        List<File> found = GradleScanner.scanCommonLibraries();
+    private void applyFoundLibraries(List<File> found, String sourceName) {
         int added = 0;
         for (File f : found) {
             String path = f.getAbsolutePath();
@@ -2668,11 +2676,45 @@ public final class NullfuscatorFrame extends JFrame {
             }
         }
         if (added > 0) {
-            log("[+] Добавлено " + added + " библиотек из Gradle cache");
+            log("[+] Добавлено " + added + " библиотек из " + sourceName);
         } else if (!found.isEmpty()) {
             log("[*] Все найденные библиотеки уже есть в списке (" + found.size() + ")");
         } else {
-            log("[!] В ~/.gradle/caches не найдено библиотек");
+            log("[!] В " + sourceName + " не найдено библиотек");
+        }
+    }
+
+    private void runGradleScan() {
+        log("[*] Поиск библиотек в ~/.gradle/caches...");
+        applyFoundLibraries(GradleScanner.scanGradleLibraries(), "Gradle cache");
+    }
+
+    private void runMavenScan() {
+        log("[*] Поиск библиотек в ~/.m2/repository...");
+        applyFoundLibraries(GradleScanner.scanMavenLibraries(), "Maven repository");
+    }
+
+    private void runCustomFolderScan() {
+        JFileChooser chooser = new JFileChooser();
+        chooser.setDialogTitle("Выберите папку или JAR-файлы с библиотеками");
+        chooser.setFileSelectionMode(JFileChooser.FILES_AND_DIRECTORIES);
+        chooser.setMultiSelectionEnabled(true);
+        chooser.setFileFilter(new FileNameExtensionFilter("JAR файлы или папки", "jar"));
+        if (chooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
+            File[] selected = chooser.getSelectedFiles();
+            if (selected == null || selected.length == 0) {
+                File single = chooser.getSelectedFile();
+                if (single != null) {
+                    selected = new File[]{single};
+                }
+            }
+            if (selected != null && selected.length > 0) {
+                List<File> found = new ArrayList<>();
+                for (File file : selected) {
+                    found.addAll(GradleScanner.scanDirectory(file));
+                }
+                applyFoundLibraries(found, "выбранных файлов/папок");
+            }
         }
     }
 
@@ -2693,13 +2735,13 @@ public final class NullfuscatorFrame extends JFrame {
         p.add(new JScrollPane(area), BorderLayout.CENTER);
 
         JPanel bar = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 0));
-        JButton copyBtn = new JButton("📋 Скопировать в буфер");
+        JButton copyBtn = new JButton("Скопировать в буфер");
         copyBtn.addActionListener(e -> {
             Toolkit.getDefaultToolkit().getSystemClipboard().setContents(new StringSelection(hocon), null);
             JOptionPane.showMessageDialog(dialog, "Конфигурация скопирована в буфер обмена!");
         });
 
-        JButton saveBtn = new JButton("💾 Сохранить как...");
+        JButton saveBtn = new JButton("Сохранить как...");
         saveBtn.addActionListener(e -> {
             JFileChooser chooser = new JFileChooser();
             chooser.setSelectedFile(new File("nullfuscator-" + preset + ".hocon"));
@@ -3220,8 +3262,8 @@ public final class NullfuscatorFrame extends JFrame {
                                 JOptionPane.YES_NO_OPTION,
                                 JOptionPane.INFORMATION_MESSAGE,
                                 null,
-                                new String[]{"📁 Показать в проводнике", "OK"},
-                                "📁 Показать в проводнике"
+                                new String[]{"Показать в проводнике", "OK"},
+                                "Показать в проводнике"
                         );
                         if (opt == 0) {
                             revealInExplorer(outFile);
