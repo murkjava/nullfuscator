@@ -1372,7 +1372,7 @@ public final class NullfuscatorFrame extends JFrame {
         JPanel customPanel = new JPanel(new BorderLayout(6, 6));
         customPanel.setBorder(new EmptyBorder(8, 8, 8, 8));
         exemptionsArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
-        exemptionsArea.setToolTipText("Примеры:\nru.myproject.gui\ndev.ranked.ac.security.*\ncom.example.api.PublicClass");
+        exemptionsArea.setToolTipText("Примеры:\nru.myproject.gui\ncom.example.mod.security.*\ncom.example.api.PublicClass");
         customPanel.add(new JScrollPane(exemptionsArea), BorderLayout.CENTER);
         JLabel hintLabel = new JLabel("<html><font color='#a1a1aa'>Укажи пакеты или классы без обфускации (defaults.exempt). Например: <code>com.mycompany.api.*</code> или <code>class{^ru/project/}</code></font></html>");
         customPanel.add(hintLabel, BorderLayout.SOUTH);
