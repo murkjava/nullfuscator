@@ -2,6 +2,7 @@ package com.nullfuscator.obf.transform;
 
 import com.nullfuscator.obf.core.ObfContext;
 import com.nullfuscator.obf.core.Transformer;
+import com.nullfuscator.obf.util.BytecodeNoise;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.tree.*;
 
@@ -119,7 +120,7 @@ public final class AntiDeobfuscatorTransformer implements Transformer {
 
             int methodCount = 1 + level;
             for (int i = 0; i < methodCount; i++) {
-                MethodNode mn = decoyMethod(ctx, rnd, methodKeys);
+                MethodNode mn = decoyMethod(cn.name, ctx, rnd, methodKeys);
                 if (mn == null) continue;
                 if (poisonSignatures) {
                     mn.signature = pick(BAD_METHOD_SIGS, rnd);
@@ -195,29 +196,19 @@ public final class AntiDeobfuscatorTransformer implements Transformer {
                 + " (level=" + level + ")");
     }
 
-    private MethodNode decoyMethod(ObfContext ctx, Random rnd, Set<String> keys) {
-        String name = uniqueName(ctx, rnd, keys, "()V");
+    private MethodNode decoyMethod(String owner, ObfContext ctx, Random rnd, Set<String> keys) {
+        String name = uniqueName(ctx, rnd, keys, "");
         if (name == null) return null;
-        MethodNode mn = new MethodNode(Opcodes.ASM9,
-                Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC,
-                name, "()V", null, null);
-        InsnList il = new InsnList();
-        il.add(new InsnNode(Opcodes.RETURN));
-        mn.instructions = il;
-        mn.maxStack = 0;
-        mn.maxLocals = 0;
-        keys.add(name + "()V");
+        MethodNode mn = BytecodeNoise.generateDecoyMethod(owner, name, rnd);
+        keys.add(name + mn.desc);
         return mn;
     }
 
     private FieldNode decoyField(ObfContext ctx, Random rnd, Set<String> keys) {
-        String desc = rnd.nextBoolean() ? "Ljava/lang/Object;" : "I";
-        String name = uniqueName(ctx, rnd, keys, " " + desc);
+        String name = uniqueName(ctx, rnd, keys, "");
         if (name == null) return null;
-        FieldNode fn = new FieldNode(Opcodes.ASM9,
-                Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC | Opcodes.ACC_TRANSIENT,
-                name, desc, null, null);
-        keys.add(name + " " + desc);
+        FieldNode fn = BytecodeNoise.generateDecoyField(name, rnd);
+        keys.add(name + " " + fn.desc);
         return fn;
     }
 
@@ -252,12 +243,14 @@ public final class AntiDeobfuscatorTransformer implements Transformer {
 
         String ghostInner1 = cn.name + "$" + ctx.names().next();
         String ghostInner2 = cn.name + "$" + ctx.names().next();
-        cn.innerClasses.add(new InnerClassNode(ghostInner1, cn.name, "Decoy",
+        cn.innerClasses.add(new InnerClassNode(ghostInner1, cn.name, ctx.names().next(),
                 Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC));
-        cn.innerClasses.add(new InnerClassNode(ghostInner2, cn.name, "Resolver",
+        cn.innerClasses.add(new InnerClassNode(ghostInner2, cn.name, ctx.names().next(),
                 Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC));
 
-        cn.innerClasses.add(new InnerClassNode("ez/poison/$GhostInner", "ez/poison/$GhostOuter", "$Ghost",
+        String ghostOuter = BytecodeNoise.randomPackage(ctx, "c") + ctx.names().next();
+        String ghostInner = ghostOuter + "$" + ctx.names().next();
+        cn.innerClasses.add(new InnerClassNode(ghostInner, ghostOuter, ctx.names().next(),
                 Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC));
 
         return 3;
