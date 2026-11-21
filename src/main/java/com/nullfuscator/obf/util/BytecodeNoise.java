@@ -13,14 +13,22 @@ public final class BytecodeNoise {
 
     public static String randomPackage(ObfContext ctx, String defaultCategory) {
         List<String> pkgs = new ArrayList<>();
+        Set<String> mixinPkgs = ctx.mixinPackages();
         for (ClassNode cn : ctx.classes()) {
-            if (cn.name == null || cn.name.startsWith("META-INF/") || ObfContext.isMixin(cn)) {
+            if (cn.name == null || cn.name.startsWith("META-INF/") || ObfContext.isMixin(cn) || ctx.isMixinPackage(cn.name)) {
                 continue;
             }
             int lastSlash = cn.name.lastIndexOf('/');
             if (lastSlash > 0) {
                 String p = cn.name.substring(0, lastSlash + 1);
-                if (!pkgs.contains(p)) {
+                boolean isMixin = false;
+                for (String mp : mixinPkgs) {
+                    if (p.startsWith(mp) || mp.startsWith(p)) {
+                        isMixin = true;
+                        break;
+                    }
+                }
+                if (!isMixin && !pkgs.contains(p)) {
                     pkgs.add(p);
                 }
             }
@@ -30,6 +38,11 @@ public final class BytecodeNoise {
         }
         Random rnd = ctx.random();
         String base = pkgs.get(rnd.nextInt(pkgs.size()));
+        for (String mp : mixinPkgs) {
+            if (base.startsWith(mp) || mp.startsWith(base)) {
+                return "a/" + defaultCategory + "/";
+            }
+        }
         if (rnd.nextBoolean()) {
             return base;
         }

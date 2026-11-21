@@ -83,6 +83,14 @@ public final class ClassRenamer implements Transformer {
 
         Set<String> pinnedPackages = new HashSet<>();
         Set<String> occupiedPackages = new HashSet<>();
+        for (Map.Entry<String, byte[]> entry : ctx.resources().entrySet()) {
+            if (Remapping.isMixinConfig(entry.getKey(), entry.getValue())) {
+                String p = Remapping.extractMixinPackage(entry.getValue());
+                if (p != null && !p.isEmpty()) {
+                    pinnedPackages.add(p.replace('.', '/') + "/");
+                }
+            }
+        }
         for (ClassNode cn : ctx.classes()) {
             String pkg = packagePrefix(cn.name);
             occupiedPackages.add(pkg);
@@ -434,7 +442,7 @@ public final class ClassRenamer implements Transformer {
                 continue;
             }
 
-            if (path.endsWith(".mixins.json")) {
+            if (Remapping.isMixinConfig(path, entry.getValue())) {
                 byte[] data = entry.getValue();
                 byte[] updated = remapMixinConfigJson(data, classMap);
                 if (updated != null) {

@@ -23,6 +23,8 @@ import java.awt.dnd.DnDConstants;
 import java.awt.dnd.DropTarget;
 import java.awt.dnd.DropTargetAdapter;
 import java.awt.dnd.DropTargetDropEvent;
+import java.awt.event.WindowAdapter;
+import java.awt.event.WindowEvent;
 import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -251,6 +253,17 @@ public final class NullfuscatorFrame extends JFrame {
         setupAppIcon();
         setupGlobalDropTarget();
         loadPreferences();
+
+        addWindowListener(new WindowAdapter() {
+            @Override
+            public void windowClosing(WindowEvent e) {
+                savePreferences();
+            }
+        });
+        try {
+            Runtime.getRuntime().addShutdownHook(new Thread(this::savePreferences));
+        } catch (Exception ignored) {
+        }
 
         presetCombo.addActionListener(e -> {
             applyPresetDefaults((String) presetCombo.getSelectedItem());
@@ -1974,6 +1987,7 @@ public final class NullfuscatorFrame extends JFrame {
 
         JPanel integrityInputPanel = new JPanel(new BorderLayout(6, 0));
         integrityInputPanel.setOpaque(false);
+        runtimeIntegrityIncludeField.putClientProperty("JTextField.placeholderText", "Главный класс или все (*)");
         integrityInputPanel.add(runtimeIntegrityIncludeField, BorderLayout.CENTER);
         JButton pickIntegrityBtn = new JButton("Выбрать из JAR...");
         pickIntegrityBtn.setFont(safeFont(null, Font.PLAIN, 12f));
@@ -3037,21 +3051,21 @@ public final class NullfuscatorFrame extends JFrame {
                 resourceRenamerCheck.setSelected(false);
                 allowIncompleteClasspathCheck.setSelected(true);
                 keepSignaturesCheck.setSelected(false);
-                exemptMixinsCheck.setSelected(false);
+                exemptMixinsCheck.setSelected(prefs.getBoolean(PREF_EXEMPT_MIXINS, false));
                 keepPublicMethodsCheck.setSelected(false);
             }
             case 1 -> {
                 resourceRenamerCheck.setSelected(false);
                 allowIncompleteClasspathCheck.setSelected(true);
                 keepSignaturesCheck.setSelected(true);
-                exemptMixinsCheck.setSelected(true);
+                exemptMixinsCheck.setSelected(prefs.getBoolean(PREF_EXEMPT_MIXINS, true));
                 keepPublicMethodsCheck.setSelected(false);
             }
             case 2 -> {
                 resourceRenamerCheck.setSelected(false);
                 allowIncompleteClasspathCheck.setSelected(true);
                 keepSignaturesCheck.setSelected(true);
-                exemptMixinsCheck.setSelected(false);
+                exemptMixinsCheck.setSelected(prefs.getBoolean(PREF_EXEMPT_MIXINS, false));
                 keepPublicMethodsCheck.setSelected(true);
             }
             default -> {}
@@ -4009,12 +4023,32 @@ public final class NullfuscatorFrame extends JFrame {
                 libs.add(libsModel.get(i));
             }
             prefs.put(PREF_LIBS, String.join(File.pathSeparator, libs));
+
+            String inPath = inputField.getText().trim();
+            if (!inPath.isEmpty()) {
+                prefs.put("input_jar", inPath);
+            }
+            String outPath = outputField.getText().trim();
+            if (!outPath.isEmpty()) {
+                prefs.put("output_jar", outPath);
+            }
+
+            prefs.flush();
         } catch (Exception ignored) {
         }
     }
 
     private void loadPreferences() {
         try {
+            String savedIn = prefs.get("input_jar", "");
+            if (!savedIn.isEmpty() && new File(savedIn).isFile()) {
+                inputField.setText(savedIn);
+            }
+            String savedOut = prefs.get("output_jar", "");
+            if (!savedOut.isEmpty()) {
+                outputField.setText(savedOut);
+            }
+
             String p = prefs.get(PREF_PRESET, "full");
             presetCombo.setSelectedItem(p);
 

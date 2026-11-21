@@ -145,9 +145,9 @@ public final class ClassRenamerRegression {
                 classRenamer { enabled: true, chars: [ "I", "l" ], depth: 3 }
                 """), 23L, new ObfLog(false), new NameGenerator(new String[] { "I", "l" }));
 
-        String pkg = "dev.ranked.ac.mixin";
+        String pkg = "com.sample.mod.mixin";
         String prefix = pkg.replace('.', '/') + "/";
-        String[] mixins = { "ChatHudMixin", "SignTextMixin" };
+        String[] mixins = { "SampleEntityMixin", "SampleScreenMixin" };
         for (String m : mixins) {
             ClassNode node = type(prefix + m);
             node.visibleAnnotations = new ArrayList<>(java.util.List.of(
@@ -157,41 +157,41 @@ public final class ClassRenamerRegression {
 
         String json = """
                 {
-                  "package": "dev.ranked.ac.mixin",
+                  "package": "com.sample.mod.mixin",
                   "client": [
-                    "ChatHudMixin",
-                    "SignTextMixin"
+                    "SampleEntityMixin",
+                    "SampleScreenMixin"
                   ]
                 }
                 """;
-        context.resources().put("anticheat.mixins.json", json.getBytes(StandardCharsets.UTF_8));
+        context.resources().put("mixins.json", json.getBytes(StandardCharsets.UTF_8));
 
         String refmap = """
                 {
                   "mappings": {
-                    "dev/ranked/ac/mixin/ChatHudMixin": {
+                    "com/sample/mod/mixin/SampleEntityMixin": {
                       "render": "m_1234"
                     }
                   }
                 }
                 """;
-        context.resources().put("anticheat.refmap.json", refmap.getBytes(StandardCharsets.UTF_8));
+        context.resources().put("sample.refmap.json", refmap.getBytes(StandardCharsets.UTF_8));
 
         new ClassRenamer().transform(context);
 
-        check(context.getClass(prefix + "ChatHudMixin") == null, "ChatHudMixin was not renamed under partialMixins");
-        check(context.getClass(prefix + "SignTextMixin") == null, "SignTextMixin was not renamed under partialMixins");
+        check(context.getClass(prefix + "SampleEntityMixin") == null, "SampleEntityMixin was not renamed under partialMixins");
+        check(context.getClass(prefix + "SampleScreenMixin") == null, "SampleScreenMixin was not renamed under partialMixins");
 
-        byte[] updatedJsonBytes = context.resources().get("anticheat.mixins.json");
+        byte[] updatedJsonBytes = context.resources().get("mixins.json");
         String updatedJson = new String(updatedJsonBytes, StandardCharsets.UTF_8);
-        check(!updatedJson.contains("ChatHudMixin"), "anticheat.mixins.json still contains ChatHudMixin");
-        check(!updatedJson.contains("SignTextMixin"), "anticheat.mixins.json still contains SignTextMixin");
-        check(updatedJson.contains("\"package\": \"dev.ranked.ac.mixin\""), "package changed in anticheat.mixins.json");
+        check(!updatedJson.contains("SampleEntityMixin"), "mixins.json still contains SampleEntityMixin");
+        check(!updatedJson.contains("SampleScreenMixin"), "mixins.json still contains SampleScreenMixin");
+        check(updatedJson.contains("\"package\": \"com.sample.mod.mixin\""), "package changed in mixins.json");
 
-        byte[] updatedRefmapBytes = context.resources().get("anticheat.refmap.json");
+        byte[] updatedRefmapBytes = context.resources().get("sample.refmap.json");
         String updatedRefmap = new String(updatedRefmapBytes, StandardCharsets.UTF_8);
-        check(!updatedRefmap.contains("dev/ranked/ac/mixin/ChatHudMixin"), "refmap still contains old mixin name");
-        check(updatedRefmap.contains("dev/ranked/ac/mixin/"), "refmap does not contain new mixin name");
+        check(!updatedRefmap.contains("com/sample/mod/mixin/SampleEntityMixin"), "refmap still contains old mixin name");
+        check(updatedRefmap.contains("com/sample/mod/mixin/"), "refmap does not contain new mixin name");
 
         System.out.println("PASS partial mixin remapping: mixins.json and refmap updated successfully");
     }

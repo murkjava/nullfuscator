@@ -66,6 +66,9 @@ public final class AntiAiTransformer implements Transformer {
                 if (mn.instructions == null) {
                     continue;
                 }
+                if (mn.name.equals("<init>") || mn.name.equals("<clinit>")) {
+                    continue;
+                }
 
                 int scratch = freeSlot(mn);
                 for (AbstractInsnNode insn : mn.instructions.toArray()) {

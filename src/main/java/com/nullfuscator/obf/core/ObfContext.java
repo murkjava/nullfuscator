@@ -1,5 +1,6 @@
 package com.nullfuscator.obf.core;
 
+import com.nullfuscator.obf.transform.Remapping;
 import com.nullfuscator.obf.util.NameGenerator;
 import com.nullfuscator.obf.util.ObfLog;
 import org.objectweb.asm.tree.AbstractInsnNode;
@@ -96,24 +97,63 @@ public final class ObfContext {
             "fileCrasher", "antiDecompiler", "bogusJump", "fieldPacking",
             "fieldIndirection", "referenceHiding", "crossClassDispersion",
             "methodExtraction", "methodRelocation", "semanticCore",
-            "semanticFabric", "releaseHardening"
+            "semanticFabric", "releaseHardening", "runtimeIntegrity"
     );
 
     public static boolean isDangerousForMixins(String sectionId) {
         return DANGEROUS_FOR_MIXINS.contains(sectionId);
     }
 
+    private Set<String> mixinPackagesCache;
+
     public boolean isExempt(String sectionId, ClassNode cn) {
         if (cn == null) {
             return true;
         }
-        if (isMixin(cn)) {
+        if (isMixin(cn) || isMixinPackage(cn.name)) {
             if (isDangerousForMixins(sectionId) || config.exemptMixins()) {
                 return true;
             }
         }
         return config.section(sectionId).isExempt(cn.name)
                 || config.section(sectionId).isExempt(originalName(cn.name));
+    }
+
+    public Set<String> mixinPackages() {
+        if (mixinPackagesCache != null) {
+            return mixinPackagesCache;
+        }
+        Set<String> pkgs = new HashSet<>();
+        for (Map.Entry<String, byte[]> entry : resources.entrySet()) {
+            if (Remapping.isMixinConfig(entry.getKey(), entry.getValue())) {
+                String p = Remapping.extractMixinPackage(entry.getValue());
+                if (p != null && !p.isEmpty()) {
+                    pkgs.add(p.replace('.', '/') + "/");
+                }
+            }
+        }
+        for (ClassNode cn : classes.values()) {
+            if (isMixin(cn)) {
+                int lastSlash = cn.name.lastIndexOf('/');
+                if (lastSlash > 0) {
+                    pkgs.add(cn.name.substring(0, lastSlash + 1));
+                }
+            }
+        }
+        mixinPackagesCache = pkgs;
+        return pkgs;
+    }
+
+    public boolean isMixinPackage(String pkgOrClassName) {
+        if (pkgOrClassName == null || pkgOrClassName.isEmpty()) {
+            return false;
+        }
+        for (String mp : mixinPackages()) {
+            if (pkgOrClassName.startsWith(mp)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public static boolean isMixin(ClassNode cn) {
