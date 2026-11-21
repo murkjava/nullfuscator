@@ -4,6 +4,7 @@ import com.nullfuscator.obf.core.ObfContext;
 import com.nullfuscator.obf.core.Transformer;
 import com.nullfuscator.obf.util.BytecodeNoise;
 import org.objectweb.asm.Opcodes;
+import org.objectweb.asm.Type;
 import org.objectweb.asm.tree.*;
 
 import java.util.ArrayList;
@@ -322,10 +323,25 @@ public final class AntiDeobfuscatorTransformer implements Transformer {
 
         if (decoyField != null) {
             trap.add(new FieldInsnNode(Opcodes.GETSTATIC, cn.name, decoyField.name, decoyField.desc));
-            trap.add(new InsnNode(Opcodes.POP));
+            trap.add(new InsnNode(Type.getType(decoyField.desc).getSize() == 2 ? Opcodes.POP2 : Opcodes.POP));
         }
         if (decoyMethod != null) {
+            for (Type arg : Type.getArgumentTypes(decoyMethod.desc)) {
+                switch (arg.getSort()) {
+                    case Type.BOOLEAN, Type.BYTE, Type.CHAR, Type.SHORT, Type.INT -> trap.add(new InsnNode(Opcodes.ICONST_0));
+                    case Type.LONG -> trap.add(new InsnNode(Opcodes.LCONST_0));
+                    case Type.FLOAT -> trap.add(new InsnNode(Opcodes.FCONST_0));
+                    case Type.DOUBLE -> trap.add(new InsnNode(Opcodes.DCONST_0));
+                    default -> trap.add(new InsnNode(Opcodes.ACONST_NULL));
+                }
+            }
             trap.add(new MethodInsnNode(Opcodes.INVOKESTATIC, cn.name, decoyMethod.name, decoyMethod.desc, false));
+            Type ret = Type.getReturnType(decoyMethod.desc);
+            if (ret.getSize() == 2) {
+                trap.add(new InsnNode(Opcodes.POP2));
+            } else if (ret.getSize() == 1) {
+                trap.add(new InsnNode(Opcodes.POP));
+            }
         }
 
         trap.add(new InsnNode(Opcodes.NOP));

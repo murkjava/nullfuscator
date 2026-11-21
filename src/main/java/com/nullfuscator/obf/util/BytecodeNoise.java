@@ -69,12 +69,20 @@ public final class BytecodeNoise {
     }
 
     public static void addConstructor(ClassNode cn, Random rnd) {
+        if (cn.methods != null) {
+            for (MethodNode mn : cn.methods) {
+                if ("<init>".equals(mn.name) && "()V".equals(mn.desc)) {
+                    return;
+                }
+            }
+        }
+        String superName = cn.superName != null ? cn.superName : "java/lang/Object";
         MethodNode init = new MethodNode(Opcodes.ASM9,
                 Opcodes.ACC_PRIVATE,
                 "<init>", "()V", null, null);
         InsnList il = init.instructions;
         il.add(new VarInsnNode(Opcodes.ALOAD, 0));
-        il.add(new MethodInsnNode(Opcodes.INVOKESPECIAL, "java/lang/Object", "<init>", "()V", false));
+        il.add(new MethodInsnNode(Opcodes.INVOKESPECIAL, superName, "<init>", "()V", false));
         il.add(new InsnNode(Opcodes.RETURN));
         init.maxStack = 1;
         init.maxLocals = 1;
@@ -197,7 +205,7 @@ public final class BytecodeNoise {
         il.add(new LdcInsnNode(k));
         il.add(new InsnNode(Opcodes.LMUL));
         il.add(new InsnNode(Opcodes.LRETURN));
-        mn.maxStack = 4;
+        mn.maxStack = 6;
         mn.maxLocals = 2;
         return mn;
     }
