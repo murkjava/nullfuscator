@@ -103,33 +103,39 @@ public final class BytecodeNoise {
     }
 
     public static FieldNode generateDecoyField(String name, Random rnd) {
-        int flavor = rnd.nextInt(6);
+        int flavor = rnd.nextInt(9);
         String desc = switch (flavor) {
             case 0 -> "I";
             case 1 -> "J";
             case 2 -> "Z";
-            case 3 -> "Ljava/lang/String;";
-            case 4 -> "[B";
+            case 3 -> "D";
+            case 4 -> "F";
+            case 5 -> "Ljava/lang/String;";
+            case 6 -> "[B";
+            case 7 -> "[I";
             default -> "Ljava/lang/Object;";
         };
-        int access = switch (rnd.nextInt(4)) {
+        int access = switch (rnd.nextInt(5)) {
             case 0 -> Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC;
             case 1 -> Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC | Opcodes.ACC_VOLATILE;
             case 2 -> Opcodes.ACC_PROTECTED | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC;
+            case 3 -> Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC;
             default -> Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC | Opcodes.ACC_TRANSIENT;
         };
         Object value = switch (flavor) {
             case 0 -> rnd.nextInt();
             case 1 -> rnd.nextLong();
             case 2 -> rnd.nextBoolean() ? 1 : 0;
-            case 3 -> "v" + rnd.nextInt(0xffff);
+            case 3 -> rnd.nextDouble();
+            case 4 -> rnd.nextFloat();
+            case 5 -> "v" + rnd.nextInt(0xffff);
             default -> null;
         };
         return new FieldNode(Opcodes.ASM9, access, name, desc, null, value);
     }
 
     public static MethodNode generateDecoyMethod(String owner, String name, Random rnd) {
-        int flavor = rnd.nextInt(7);
+        int flavor = rnd.nextInt(17);
         return switch (flavor) {
             case 0 -> buildIntMathMethod(name, rnd);
             case 1 -> buildPredicateMethod(name, rnd);
@@ -137,6 +143,16 @@ public final class BytecodeNoise {
             case 3 -> buildLongMathMethod(name, rnd);
             case 4 -> buildClampMethod(name, rnd);
             case 5 -> buildChecksumMethod(name, rnd);
+            case 6 -> buildMurmurMixMethod(name, rnd);
+            case 7 -> buildBitManipulationMethod(name, rnd);
+            case 8 -> buildArrayShuffleMethod(name, rnd);
+            case 9 -> buildMathHypotMethod(name, rnd);
+            case 10 -> buildStringScrambleMethod(name, rnd);
+            case 11 -> buildCollatzStepMethod(name, rnd);
+            case 12 -> buildTryCatchRescueMethod(name, rnd);
+            case 13 -> buildGrayCodeMethod(name, rnd);
+            case 14 -> buildFletcherChecksumMethod(name, rnd);
+            case 15 -> buildArrayEqualMethod(name, rnd);
             default -> buildObjectSelectorMethod(name, rnd);
         };
     }
@@ -284,6 +300,269 @@ public final class BytecodeNoise {
         il.add(new VarInsnNode(Opcodes.ALOAD, 1));
         il.add(new InsnNode(Opcodes.ARETURN));
         mn.maxStack = 1;
+        mn.maxLocals = 2;
+        return mn;
+    }
+
+    private static MethodNode buildMurmurMixMethod(String name, Random rnd) {
+        MethodNode mn = new MethodNode(Opcodes.ASM9,
+                Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC,
+                name, "(I)I", null, null);
+        InsnList il = mn.instructions;
+        int k1 = 0x85ebca6b ^ rnd.nextInt(0xff);
+        int k2 = 0xc2b2ae35 ^ rnd.nextInt(0xff);
+        il.add(new VarInsnNode(Opcodes.ILOAD, 0));
+        il.add(new VarInsnNode(Opcodes.ILOAD, 0));
+        il.add(new IntInsnNode(Opcodes.BIPUSH, 16));
+        il.add(new InsnNode(Opcodes.IUSHR));
+        il.add(new InsnNode(Opcodes.IXOR));
+        il.add(new LdcInsnNode(k1));
+        il.add(new InsnNode(Opcodes.IMUL));
+        il.add(new InsnNode(Opcodes.DUP));
+        il.add(new IntInsnNode(Opcodes.BIPUSH, 13));
+        il.add(new InsnNode(Opcodes.IUSHR));
+        il.add(new InsnNode(Opcodes.IXOR));
+        il.add(new LdcInsnNode(k2));
+        il.add(new InsnNode(Opcodes.IMUL));
+        il.add(new InsnNode(Opcodes.DUP));
+        il.add(new IntInsnNode(Opcodes.BIPUSH, 16));
+        il.add(new InsnNode(Opcodes.IUSHR));
+        il.add(new InsnNode(Opcodes.IXOR));
+        il.add(new InsnNode(Opcodes.IRETURN));
+        mn.maxStack = 3;
+        mn.maxLocals = 1;
+        return mn;
+    }
+
+    private static MethodNode buildBitManipulationMethod(String name, Random rnd) {
+        MethodNode mn = new MethodNode(Opcodes.ASM9,
+                Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC,
+                name, "(I)I", null, null);
+        InsnList il = mn.instructions;
+        il.add(new VarInsnNode(Opcodes.ILOAD, 0));
+        il.add(new VarInsnNode(Opcodes.ILOAD, 0));
+        il.add(new InsnNode(Opcodes.ICONST_1));
+        il.add(new InsnNode(Opcodes.IUSHR));
+        il.add(new LdcInsnNode(0x55555555));
+        il.add(new InsnNode(Opcodes.IAND));
+        il.add(new InsnNode(Opcodes.ISUB));
+        il.add(new VarInsnNode(Opcodes.ISTORE, 0));
+        il.add(new VarInsnNode(Opcodes.ILOAD, 0));
+        il.add(new LdcInsnNode(0x33333333));
+        il.add(new InsnNode(Opcodes.IAND));
+        il.add(new VarInsnNode(Opcodes.ILOAD, 0));
+        il.add(new InsnNode(Opcodes.ICONST_2));
+        il.add(new InsnNode(Opcodes.IUSHR));
+        il.add(new LdcInsnNode(0x33333333));
+        il.add(new InsnNode(Opcodes.IAND));
+        il.add(new InsnNode(Opcodes.IADD));
+        il.add(new InsnNode(Opcodes.IRETURN));
+        mn.maxStack = 3;
+        mn.maxLocals = 1;
+        return mn;
+    }
+
+    private static MethodNode buildArrayShuffleMethod(String name, Random rnd) {
+        MethodNode mn = new MethodNode(Opcodes.ASM9,
+                Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC,
+                name, "([II)V", null, null);
+        InsnList il = mn.instructions;
+        LabelNode lExit = new LabelNode();
+        il.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        il.add(new JumpInsnNode(Opcodes.IFNULL, lExit));
+        il.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        il.add(new InsnNode(Opcodes.ARRAYLENGTH));
+        il.add(new InsnNode(Opcodes.ICONST_2));
+        il.add(new JumpInsnNode(Opcodes.IF_ICMPLT, lExit));
+        il.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        il.add(new InsnNode(Opcodes.ICONST_0));
+        il.add(new InsnNode(Opcodes.IALOAD));
+        il.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        il.add(new InsnNode(Opcodes.ICONST_1));
+        il.add(new InsnNode(Opcodes.IALOAD));
+        il.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        il.add(new InsnNode(Opcodes.ICONST_0));
+        il.add(new InsnNode(Opcodes.SWAP));
+        il.add(new InsnNode(Opcodes.IASTORE));
+        il.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        il.add(new InsnNode(Opcodes.ICONST_1));
+        il.add(new InsnNode(Opcodes.SWAP));
+        il.add(new InsnNode(Opcodes.IASTORE));
+        il.add(lExit);
+        il.add(new InsnNode(Opcodes.RETURN));
+        mn.maxStack = 4;
+        mn.maxLocals = 2;
+        return mn;
+    }
+
+    private static MethodNode buildMathHypotMethod(String name, Random rnd) {
+        MethodNode mn = new MethodNode(Opcodes.ASM9,
+                Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC,
+                name, "(DD)D", null, null);
+        InsnList il = mn.instructions;
+        il.add(new VarInsnNode(Opcodes.DLOAD, 0));
+        il.add(new VarInsnNode(Opcodes.DLOAD, 0));
+        il.add(new InsnNode(Opcodes.DMUL));
+        il.add(new VarInsnNode(Opcodes.DLOAD, 2));
+        il.add(new VarInsnNode(Opcodes.DLOAD, 2));
+        il.add(new InsnNode(Opcodes.DMUL));
+        il.add(new InsnNode(Opcodes.DADD));
+        il.add(new MethodInsnNode(Opcodes.INVOKESTATIC, "java/lang/Math", "sqrt", "(D)D", false));
+        il.add(new InsnNode(Opcodes.DRETURN));
+        mn.maxStack = 4;
+        mn.maxLocals = 4;
+        return mn;
+    }
+
+    private static MethodNode buildStringScrambleMethod(String name, Random rnd) {
+        MethodNode mn = new MethodNode(Opcodes.ASM9,
+                Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC,
+                name, "(Ljava/lang/String;I)Ljava/lang/String;", null, null);
+        InsnList il = mn.instructions;
+        LabelNode lNull = new LabelNode();
+        il.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        il.add(new JumpInsnNode(Opcodes.IFNULL, lNull));
+        il.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        il.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL, "java/lang/String", "length", "()I", false));
+        il.add(new JumpInsnNode(Opcodes.IFEQ, lNull));
+        il.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        il.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL, "java/lang/String", "trim", "()Ljava/lang/String;", false));
+        il.add(new InsnNode(Opcodes.ARETURN));
+        il.add(lNull);
+        il.add(new LdcInsnNode(""));
+        il.add(new InsnNode(Opcodes.ARETURN));
+        mn.maxStack = 2;
+        mn.maxLocals = 2;
+        return mn;
+    }
+
+    private static MethodNode buildCollatzStepMethod(String name, Random rnd) {
+        MethodNode mn = new MethodNode(Opcodes.ASM9,
+                Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC,
+                name, "(J)J", null, null);
+        InsnList il = mn.instructions;
+        LabelNode lOdd = new LabelNode();
+        il.add(new VarInsnNode(Opcodes.LLOAD, 0));
+        il.add(new InsnNode(Opcodes.LCONST_1));
+        il.add(new InsnNode(Opcodes.LAND));
+        il.add(new InsnNode(Opcodes.LCONST_0));
+        il.add(new InsnNode(Opcodes.LCMP));
+        il.add(new JumpInsnNode(Opcodes.IFNE, lOdd));
+        il.add(new VarInsnNode(Opcodes.LLOAD, 0));
+        il.add(new InsnNode(Opcodes.ICONST_1));
+        il.add(new InsnNode(Opcodes.LUSHR));
+        il.add(new InsnNode(Opcodes.LRETURN));
+        il.add(lOdd);
+        il.add(new VarInsnNode(Opcodes.LLOAD, 0));
+        il.add(new LdcInsnNode(3L));
+        il.add(new InsnNode(Opcodes.LMUL));
+        il.add(new InsnNode(Opcodes.LCONST_1));
+        il.add(new InsnNode(Opcodes.LADD));
+        il.add(new InsnNode(Opcodes.LRETURN));
+        mn.maxStack = 4;
+        mn.maxLocals = 2;
+        return mn;
+    }
+
+    private static MethodNode buildTryCatchRescueMethod(String name, Random rnd) {
+        MethodNode mn = new MethodNode(Opcodes.ASM9,
+                Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC,
+                name, "(Ljava/lang/String;I)I", null, null);
+        mn.tryCatchBlocks = new ArrayList<>();
+        LabelNode lStart = new LabelNode();
+        LabelNode lEnd = new LabelNode();
+        LabelNode lHandler = new LabelNode();
+        InsnList il = mn.instructions;
+        il.add(lStart);
+        il.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        il.add(new MethodInsnNode(Opcodes.INVOKESTATIC, "java/lang/Integer", "parseInt", "(Ljava/lang/String;)I", false));
+        il.add(new InsnNode(Opcodes.IRETURN));
+        il.add(lEnd);
+        il.add(lHandler);
+        il.add(new InsnNode(Opcodes.POP));
+        il.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        il.add(new InsnNode(Opcodes.IRETURN));
+        mn.tryCatchBlocks.add(new TryCatchBlockNode(lStart, lEnd, lHandler, "java/lang/Exception"));
+        mn.maxStack = 1;
+        mn.maxLocals = 2;
+        return mn;
+    }
+
+    private static MethodNode buildGrayCodeMethod(String name, Random rnd) {
+        MethodNode mn = new MethodNode(Opcodes.ASM9,
+                Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC,
+                name, "(I)I", null, null);
+        InsnList il = mn.instructions;
+        il.add(new VarInsnNode(Opcodes.ILOAD, 0));
+        il.add(new VarInsnNode(Opcodes.ILOAD, 0));
+        il.add(new InsnNode(Opcodes.ICONST_1));
+        il.add(new InsnNode(Opcodes.IUSHR));
+        il.add(new InsnNode(Opcodes.IXOR));
+        il.add(new InsnNode(Opcodes.IRETURN));
+        mn.maxStack = 3;
+        mn.maxLocals = 1;
+        return mn;
+    }
+
+    private static MethodNode buildFletcherChecksumMethod(String name, Random rnd) {
+        MethodNode mn = new MethodNode(Opcodes.ASM9,
+                Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC,
+                name, "([B)I", null, null);
+        InsnList il = mn.instructions;
+        LabelNode lNull = new LabelNode();
+        LabelNode lLoop = new LabelNode();
+        LabelNode lExit = new LabelNode();
+        il.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        il.add(new JumpInsnNode(Opcodes.IFNULL, lNull));
+        il.add(new InsnNode(Opcodes.ICONST_0));
+        il.add(new VarInsnNode(Opcodes.ISTORE, 1));
+        il.add(new InsnNode(Opcodes.ICONST_0));
+        il.add(new VarInsnNode(Opcodes.ISTORE, 2));
+        il.add(lLoop);
+        il.add(new VarInsnNode(Opcodes.ILOAD, 2));
+        il.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        il.add(new InsnNode(Opcodes.ARRAYLENGTH));
+        il.add(new JumpInsnNode(Opcodes.IF_ICMPGE, lExit));
+        il.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        il.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        il.add(new VarInsnNode(Opcodes.ILOAD, 2));
+        il.add(new InsnNode(Opcodes.BALOAD));
+        il.add(new InsnNode(Opcodes.IADD));
+        il.add(new VarInsnNode(Opcodes.ISTORE, 1));
+        il.add(new IincInsnNode(2, 1));
+        il.add(new JumpInsnNode(Opcodes.GOTO, lLoop));
+        il.add(lExit);
+        il.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        il.add(new InsnNode(Opcodes.IRETURN));
+        il.add(lNull);
+        il.add(new InsnNode(Opcodes.ICONST_0));
+        il.add(new InsnNode(Opcodes.IRETURN));
+        mn.maxStack = 3;
+        mn.maxLocals = 3;
+        return mn;
+    }
+
+    private static MethodNode buildArrayEqualMethod(String name, Random rnd) {
+        MethodNode mn = new MethodNode(Opcodes.ASM9,
+                Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC,
+                name, "([I[I)Z", null, null);
+        InsnList il = mn.instructions;
+        LabelNode lFalse = new LabelNode();
+        il.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        il.add(new JumpInsnNode(Opcodes.IFNULL, lFalse));
+        il.add(new VarInsnNode(Opcodes.ALOAD, 1));
+        il.add(new JumpInsnNode(Opcodes.IFNULL, lFalse));
+        il.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        il.add(new InsnNode(Opcodes.ARRAYLENGTH));
+        il.add(new VarInsnNode(Opcodes.ALOAD, 1));
+        il.add(new InsnNode(Opcodes.ARRAYLENGTH));
+        il.add(new JumpInsnNode(Opcodes.IF_ICMPNE, lFalse));
+        il.add(new InsnNode(Opcodes.ICONST_1));
+        il.add(new InsnNode(Opcodes.IRETURN));
+        il.add(lFalse);
+        il.add(new InsnNode(Opcodes.ICONST_0));
+        il.add(new InsnNode(Opcodes.IRETURN));
+        mn.maxStack = 2;
         mn.maxLocals = 2;
         return mn;
     }

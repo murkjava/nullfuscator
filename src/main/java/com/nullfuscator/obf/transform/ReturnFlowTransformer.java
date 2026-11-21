@@ -9,6 +9,7 @@ import org.objectweb.asm.tree.InsnList;
 import org.objectweb.asm.tree.InsnNode;
 import org.objectweb.asm.tree.IntInsnNode;
 import org.objectweb.asm.tree.LdcInsnNode;
+import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
 
 import java.util.ArrayList;
@@ -68,17 +69,88 @@ public final class ReturnFlowTransformer implements Transformer {
                     InsnList frag = new InsnList();
                     for (int p = 0; p < pairs; p++) {
                         if (longKind) {
-                            long key = rnd.nextLong();
-                            pushLong(frag, key);
-                            frag.add(new InsnNode(LXOR));
-                            pushLong(frag, key);
-                            frag.add(new InsnNode(LXOR));
+                            int flavor = rnd.nextInt(4);
+                            switch (flavor) {
+                                case 0 -> {
+                                    long a = rnd.nextLong() | 1L;
+                                    long inv = modInverseLong(a);
+                                    pushLong(frag, a);
+                                    frag.add(new InsnNode(LMUL));
+                                    pushLong(frag, inv);
+                                    frag.add(new InsnNode(LMUL));
+                                }
+                                case 1 -> {
+                                    long delta = rnd.nextLong();
+                                    pushLong(frag, delta);
+                                    frag.add(new InsnNode(LADD));
+                                    pushLong(frag, delta);
+                                    frag.add(new InsnNode(LSUB));
+                                }
+                                case 2 -> {
+                                    long delta = rnd.nextLong();
+                                    long key = rnd.nextLong();
+                                    pushLong(frag, delta);
+                                    frag.add(new InsnNode(LADD));
+                                    pushLong(frag, key);
+                                    frag.add(new InsnNode(LXOR));
+                                    pushLong(frag, key);
+                                    frag.add(new InsnNode(LXOR));
+                                    pushLong(frag, delta);
+                                    frag.add(new InsnNode(LSUB));
+                                }
+                                default -> {
+                                    long key = rnd.nextLong();
+                                    pushLong(frag, key);
+                                    frag.add(new InsnNode(LXOR));
+                                    pushLong(frag, key);
+                                    frag.add(new InsnNode(LXOR));
+                                }
+                            }
                         } else {
-                            int key = rnd.nextInt();
-                            pushInt(frag, key);
-                            frag.add(new InsnNode(IXOR));
-                            pushInt(frag, key);
-                            frag.add(new InsnNode(IXOR));
+                            int flavor = rnd.nextInt(5);
+                            switch (flavor) {
+                                case 0 -> {
+                                    int a = rnd.nextInt() | 1;
+                                    int inv = modInverseInt(a);
+                                    pushInt(frag, a);
+                                    frag.add(new InsnNode(IMUL));
+                                    pushInt(frag, inv);
+                                    frag.add(new InsnNode(IMUL));
+                                }
+                                case 1 -> {
+                                    int delta = rnd.nextInt();
+                                    pushInt(frag, delta);
+                                    frag.add(new InsnNode(IADD));
+                                    pushInt(frag, delta);
+                                    frag.add(new InsnNode(ISUB));
+                                }
+                                case 2 -> {
+                                    int shift = 1 + rnd.nextInt(31);
+                                    pushInt(frag, shift);
+                                    frag.add(new MethodInsnNode(INVOKESTATIC, "java/lang/Integer", "rotateLeft", "(II)I", false));
+                                    pushInt(frag, shift);
+                                    frag.add(new MethodInsnNode(INVOKESTATIC, "java/lang/Integer", "rotateRight", "(II)I", false));
+                                }
+                                case 3 -> {
+                                    int delta = rnd.nextInt();
+                                    int key = rnd.nextInt();
+                                    pushInt(frag, delta);
+                                    frag.add(new InsnNode(IADD));
+                                    pushInt(frag, key);
+                                    frag.add(new InsnNode(IXOR));
+                                    pushInt(frag, key);
+                                    frag.add(new InsnNode(IXOR));
+                                    pushInt(frag, delta);
+                                    frag.add(new InsnNode(ISUB));
+                                }
+                                default -> {
+                                    int key = rnd.nextInt();
+                                    pushInt(frag, key);
+                                    frag.add(new InsnNode(IXOR));
+                                    pushInt(frag, key);
+                                    frag.add(new InsnNode(IXOR));
+                                }
+                            }
                         }
                     }
                     mn.instructions.insertBefore(ret, frag);
@@ -89,6 +161,25 @@ public final class ReturnFlowTransformer implements Transformer {
         }
 
         ctx.log().debug("integerReturn: " + sites + " return sites across " + methods + " methods");
+    }
+
+    private static int modInverseInt(int a) {
+        int inv = a;
+        inv *= 2 - a * inv;
+        inv *= 2 - a * inv;
+        inv *= 2 - a * inv;
+        inv *= 2 - a * inv;
+        return inv;
+    }
+
+    private static long modInverseLong(long a) {
+        long inv = a;
+        inv *= 2 - a * inv;
+        inv *= 2 - a * inv;
+        inv *= 2 - a * inv;
+        inv *= 2 - a * inv;
+        inv *= 2 - a * inv;
+        return inv;
     }
 
     private static boolean isIntKind(int sort) {

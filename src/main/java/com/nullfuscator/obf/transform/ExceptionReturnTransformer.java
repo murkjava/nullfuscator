@@ -3,13 +3,16 @@ package com.nullfuscator.obf.transform;
 import com.nullfuscator.obf.core.Limits;
 import com.nullfuscator.obf.core.ObfContext;
 import com.nullfuscator.obf.core.Transformer;
+import com.nullfuscator.obf.util.BytecodeNoise;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
 import org.objectweb.asm.tree.*;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Random;
+import java.util.Set;
 
 public final class ExceptionReturnTransformer implements Transformer {
 
@@ -38,11 +41,21 @@ public final class ExceptionReturnTransformer implements Transformer {
         }
 
         Random rnd = ctx.random();
-        String tokenName = "ez/rt/" + ctx.names().nextRandomClass("", rnd, 10);
-        ClassNode token = buildToken(tokenName, version);
+        int tokenCount = Math.max(2, Math.min(5, 1 + targets.size() / 15));
+        List<String> tokenNames = new ArrayList<>();
+        List<ClassNode> tokens = new ArrayList<>();
+        for (int i = 0; i < tokenCount; i++) {
+            String pkg = BytecodeNoise.randomPackage(ctx, "rt");
+            String tName = pkg + ctx.names().next();
+            ClassNode tNode = buildToken(tName, version, rnd);
+            BytecodeNoise.decorateCarrier(tNode, ctx);
+            tokenNames.add(tName);
+            tokens.add(tNode);
+        }
 
         int methods = 0;
         int sites = 0;
+        Set<String> usedTokens = new HashSet<>();
         for (ClassNode cn : targets) {
             if ((cn.access & (Opcodes.ACC_INTERFACE | Opcodes.ACC_ANNOTATION | Opcodes.ACC_MODULE)) != 0) {
                 continue;
@@ -55,14 +68,20 @@ public final class ExceptionReturnTransformer implements Transformer {
                 if (count == 0 || rnd.nextInt(100) >= percent) {
                     continue;
                 }
+                String tokenName = tokenNames.get(rnd.nextInt(tokenNames.size()));
                 transformMethod(mn, tokenName);
+                usedTokens.add(tokenName);
                 methods++;
                 sites += count;
             }
         }
 
         if (methods > 0) {
-            ctx.putClass(token);
+            for (ClassNode t : tokens) {
+                if (usedTokens.contains(t.name)) {
+                    ctx.putClass(t);
+                }
+            }
         }
         ctx.log().debug("exceptionReturn: routed " + sites + " sites across " + methods + " methods");
     }
@@ -139,24 +158,27 @@ public final class ExceptionReturnTransformer implements Transformer {
         mn.tryCatchBlocks.add(new TryCatchBlockNode(start, end, handler, tokenName));
     }
 
-    private static ClassNode buildToken(String name, int version) {
+    private static ClassNode buildToken(String name, int version, Random rnd) {
+        String[] bases = {
+                "java/lang/RuntimeException",
+                "java/lang/IllegalStateException",
+                "java/lang/IllegalArgumentException",
+                "java/lang/NoSuchElementException",
+                "java/lang/UnsupportedOperationException"
+        };
+        String superName = bases[rnd.nextInt(bases.length)];
+
         ClassNode cn = new ClassNode();
         cn.version = version;
         cn.access = Opcodes.ACC_PUBLIC | Opcodes.ACC_FINAL | Opcodes.ACC_SYNTHETIC;
         cn.name = name;
-        cn.superName = "java/lang/RuntimeException";
+        cn.superName = superName;
         cn.fields.add(new FieldNode(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_FINAL,
                 "t", "L" + name + ";", null, null));
 
         MethodNode init = new MethodNode(Opcodes.ACC_PRIVATE, "<init>", "()V", null, null);
         init.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
-        init.instructions.add(new InsnNode(Opcodes.ACONST_NULL));
-        init.instructions.add(new InsnNode(Opcodes.ACONST_NULL));
-        init.instructions.add(new InsnNode(Opcodes.ICONST_0));
-        init.instructions.add(new InsnNode(Opcodes.ICONST_0));
-        init.instructions.add(new MethodInsnNode(Opcodes.INVOKESPECIAL,
-                "java/lang/RuntimeException", "<init>",
-                "(Ljava/lang/String;Ljava/lang/Throwable;ZZ)V", false));
+        init.instructions.add(new MethodInsnNode(Opcodes.INVOKESPECIAL, superName, "<init>", "()V", false));
         init.instructions.add(new InsnNode(Opcodes.RETURN));
         cn.methods.add(init);
 

@@ -303,14 +303,46 @@ public final class AntiDeobfuscatorTransformer implements Transformer {
 
         int rotation = 1 + rnd.nextInt(31);
         int selectedBit = 1 << rnd.nextInt(31);
-        trap.add(new MethodInsnNode(Opcodes.INVOKESTATIC, "java/lang/System",
-                "currentTimeMillis", "()J", false));
-        trap.add(new InsnNode(Opcodes.L2I));
-        trap.add(new MethodInsnNode(Opcodes.INVOKESTATIC, "java/lang/Thread",
-                "currentThread", "()Ljava/lang/Thread;", false));
-        trap.add(new MethodInsnNode(Opcodes.INVOKESTATIC, "java/lang/System",
-                "identityHashCode", "(Ljava/lang/Object;)I", false));
-        trap.add(new InsnNode(Opcodes.IXOR));
+        int condFlavor = rnd.nextInt(4);
+        switch (condFlavor) {
+            case 0 -> {
+                trap.add(new MethodInsnNode(Opcodes.INVOKESTATIC, "java/lang/System",
+                        "currentTimeMillis", "()J", false));
+                trap.add(new InsnNode(Opcodes.L2I));
+                trap.add(new MethodInsnNode(Opcodes.INVOKESTATIC, "java/lang/Thread",
+                        "currentThread", "()Ljava/lang/Thread;", false));
+                trap.add(new MethodInsnNode(Opcodes.INVOKESTATIC, "java/lang/System",
+                        "identityHashCode", "(Ljava/lang/Object;)I", false));
+                trap.add(new InsnNode(Opcodes.IXOR));
+            }
+            case 1 -> {
+                trap.add(new MethodInsnNode(Opcodes.INVOKESTATIC, "java/lang/System",
+                        "nanoTime", "()J", false));
+                trap.add(new InsnNode(Opcodes.L2I));
+                trap.add(new MethodInsnNode(Opcodes.INVOKESTATIC, "java/lang/Runtime",
+                        "getRuntime", "()Ljava/lang/Runtime;", false));
+                trap.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL, "java/lang/Runtime",
+                        "availableProcessors", "()I", false));
+                trap.add(new InsnNode(Opcodes.IXOR));
+            }
+            case 2 -> {
+                trap.add(new MethodInsnNode(Opcodes.INVOKESTATIC, "java/lang/Thread",
+                        "currentThread", "()Ljava/lang/Thread;", false));
+                trap.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL, "java/lang/Thread",
+                        "getName", "()Ljava/lang/String;", false));
+                trap.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL, "java/lang/String",
+                        "hashCode", "()I", false));
+                trap.add(new LdcInsnNode(rnd.nextInt(0xffff)));
+                trap.add(new InsnNode(Opcodes.IXOR));
+            }
+            default -> {
+                trap.add(new MethodInsnNode(Opcodes.INVOKESTATIC, "java/lang/System",
+                        "currentTimeMillis", "()J", false));
+                trap.add(new InsnNode(Opcodes.L2I));
+                trap.add(new LdcInsnNode(rnd.nextInt(0xffff)));
+                trap.add(new InsnNode(Opcodes.IADD));
+            }
+        }
         trap.add(new org.objectweb.asm.tree.LdcInsnNode(rotation));
         trap.add(new MethodInsnNode(Opcodes.INVOKESTATIC, "java/lang/Integer",
                 "rotateLeft", "(II)I", false));

@@ -25,6 +25,20 @@ public final class SwitchFlowTransformer implements Transformer {
         return "known-key switch dispatch";
     }
 
+    private record Point(AbstractInsnNode insn, List<Integer> intLocals) {}
+
+    private static final String[] JUNK_EXCEPTIONS = {
+            "java/lang/IllegalStateException",
+            "java/lang/IllegalArgumentException",
+            "java/lang/NoSuchElementException",
+            "java/lang/ArrayIndexOutOfBoundsException",
+            "java/lang/UnsupportedOperationException",
+            "java/lang/ArithmeticException",
+            "java/lang/ConcurrentModificationException",
+            "java/lang/SecurityException",
+            "java/lang/RuntimeException"
+    };
+
     @Override
     public void transform(ObfContext ctx) {
         Random rnd = ctx.random();
@@ -40,7 +54,7 @@ public final class SwitchFlowTransformer implements Transformer {
                     continue;
                 }
 
-                List<AbstractInsnNode> points = emptyStackPoints(cn.name, mn);
+                List<Point> points = emptyStackPoints(cn.name, mn);
                 if (points.isEmpty()) {
                     continue;
                 }
@@ -59,7 +73,7 @@ public final class SwitchFlowTransformer implements Transformer {
                 + methods + " methods");
     }
 
-    private static void insertSwitch(Random rnd, InsnList insns, AbstractInsnNode at) {
+    private static void insertSwitch(Random rnd, InsnList insns, Point pt) {
         int n = 3 + rnd.nextInt(3);
         int realIndex = rnd.nextInt(n);
         LabelNode real = new LabelNode();
@@ -70,8 +84,10 @@ public final class SwitchFlowTransformer implements Transformer {
         }
 
         InsnList frag = new InsnList();
+        int key;
         if (rnd.nextBoolean()) {
-            pushInt(frag, realIndex);
+            key = realIndex;
+            pushKey(frag, key, pt.intLocals(), rnd);
             frag.add(new TableSwitchInsnNode(0, n - 1, junk, labels));
         } else {
             int[] keys = new int[n];
@@ -80,14 +96,73 @@ public final class SwitchFlowTransformer implements Transformer {
                 keys[k] = cur;
                 cur += 1 + rnd.nextInt(7);
             }
-            pushInt(frag, keys[realIndex]);
+            key = keys[realIndex];
+            pushKey(frag, key, pt.intLocals(), rnd);
             frag.add(new LookupSwitchInsnNode(junk, keys, labels));
         }
 
         frag.add(junk);
-        frag.add(junkThrow());
+        frag.add(junkThrow(rnd));
         frag.add(real);
-        insns.insertBefore(at, frag);
+        insns.insertBefore(pt.insn(), frag);
+    }
+
+    private static void pushKey(InsnList il, int key, List<Integer> intLocals, Random rnd) {
+        if (!intLocals.isEmpty() && rnd.nextInt(100) < 70) {
+            int slot = intLocals.get(rnd.nextInt(intLocals.size()));
+            int flavor = rnd.nextInt(4);
+            switch (flavor) {
+                case 0 -> {
+                    il.add(new VarInsnNode(ILOAD, slot));
+                    pushInt(il, key);
+                    il.add(new InsnNode(IXOR));
+                    il.add(new VarInsnNode(ILOAD, slot));
+                    il.add(new InsnNode(IXOR));
+                }
+                case 1 -> {
+                    il.add(new VarInsnNode(ILOAD, slot));
+                    pushInt(il, key);
+                    il.add(new InsnNode(IADD));
+                    il.add(new VarInsnNode(ILOAD, slot));
+                    il.add(new InsnNode(ISUB));
+                }
+                case 2 -> {
+                    il.add(new VarInsnNode(ILOAD, slot));
+                    il.add(new InsnNode(ICONST_2));
+                    il.add(new InsnNode(IMUL));
+                    il.add(new VarInsnNode(ILOAD, slot));
+                    il.add(new InsnNode(ICONST_1));
+                    il.add(new InsnNode(ISHL));
+                    il.add(new InsnNode(ISUB));
+                    pushInt(il, key);
+                    il.add(new InsnNode(IADD));
+                }
+                default -> {
+                    il.add(new VarInsnNode(ILOAD, slot));
+                    il.add(new VarInsnNode(ILOAD, slot));
+                    il.add(new InsnNode(IXOR));
+                    pushInt(il, key);
+                    il.add(new InsnNode(IADD));
+                }
+            }
+        } else {
+            int a = rnd.nextInt() | 1;
+            int inv = modInverseInt(a);
+            pushInt(il, key);
+            pushInt(il, a);
+            il.add(new InsnNode(IMUL));
+            pushInt(il, inv);
+            il.add(new InsnNode(IMUL));
+        }
+    }
+
+    private static int modInverseInt(int a) {
+        int inv = a;
+        inv *= 2 - a * inv;
+        inv *= 2 - a * inv;
+        inv *= 2 - a * inv;
+        inv *= 2 - a * inv;
+        return inv;
     }
 
     private static boolean skip(MethodNode mn) {
@@ -109,8 +184,8 @@ public final class SwitchFlowTransformer implements Transformer {
         return false;
     }
 
-    private static List<AbstractInsnNode> emptyStackPoints(String owner, MethodNode mn) {
-        List<AbstractInsnNode> pts = new ArrayList<>();
+    private static List<Point> emptyStackPoints(String owner, MethodNode mn) {
+        List<Point> pts = new ArrayList<>();
         try {
             Analyzer<BasicValue> a = new Analyzer<>(new BasicInterpreter());
             Frame<BasicValue>[] frames = a.analyze(owner, mn);
@@ -118,21 +193,22 @@ public final class SwitchFlowTransformer implements Transformer {
 
             for (int i = 0; i < arr.length; i++) {
                 Frame<BasicValue> f = frames[i];
-                if (f == null) {
+                if (f == null || f.getStackSize() != 0 || arr[i].getOpcode() < 0) {
                     continue;
                 }
-                if (f.getStackSize() != 0) {
-                    continue;
+                List<Integer> intLocals = new ArrayList<>();
+                for (int l = 0; l < f.getLocals(); l++) {
+                    BasicValue v = f.getLocal(l);
+                    if (v != null && v == BasicValue.INT_VALUE) {
+                        intLocals.add(l);
+                    }
                 }
-                if (arr[i].getOpcode() < 0) {
-                    continue;
-                }
-                pts.add(arr[i]);
+                pts.add(new Point(arr[i], intLocals));
             }
         } catch (AnalyzerException | RuntimeException e) {
             AbstractInsnNode first = firstReal(mn);
             if (first != null) {
-                pts.add(first);
+                pts.add(new Point(first, List.of()));
             }
         }
         return pts;
@@ -147,11 +223,12 @@ public final class SwitchFlowTransformer implements Transformer {
         return null;
     }
 
-    private static InsnList junkThrow() {
+    private static InsnList junkThrow(Random rnd) {
+        String exc = JUNK_EXCEPTIONS[rnd.nextInt(JUNK_EXCEPTIONS.length)];
         InsnList il = new InsnList();
-        il.add(new TypeInsnNode(NEW, "java/lang/RuntimeException"));
+        il.add(new TypeInsnNode(NEW, exc));
         il.add(new InsnNode(DUP));
-        il.add(new MethodInsnNode(INVOKESPECIAL, "java/lang/RuntimeException", "<init>", "()V", false));
+        il.add(new MethodInsnNode(INVOKESPECIAL, exc, "<init>", "()V", false));
         il.add(new InsnNode(ATHROW));
         return il;
     }

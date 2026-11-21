@@ -147,7 +147,7 @@ public final class AntiAiTransformer implements Transformer {
         net.decode(repl, value);
         repl.add(new VarInsnNode(Opcodes.ISTORE, slot));
 
-        int formula = ctx.random().nextInt(4);
+        int formula = ctx.random().nextInt(10);
         switch (formula) {
             case 0 -> {
                 repl.add(new VarInsnNode(Opcodes.ILOAD, slot));
@@ -187,12 +187,87 @@ public final class AntiAiTransformer implements Transformer {
                 repl.add(new InsnNode(Opcodes.ISUB));
                 repl.add(new JumpInsnNode(Opcodes.IFEQ, cont));
             }
-            default -> {
+            case 3 -> {
                 repl.add(new VarInsnNode(Opcodes.ILOAD, slot));
                 pushInt(repl, m);
                 repl.add(new InsnNode(Opcodes.IXOR));
                 pushInt(repl, m);
                 repl.add(new InsnNode(Opcodes.IXOR));
+                repl.add(new VarInsnNode(Opcodes.ILOAD, slot));
+                repl.add(new InsnNode(Opcodes.ISUB));
+                repl.add(new JumpInsnNode(Opcodes.IFEQ, cont));
+            }
+            case 4 -> {
+                repl.add(new VarInsnNode(Opcodes.ILOAD, slot));
+                pushInt(repl, m);
+                repl.add(new InsnNode(Opcodes.IOR));
+                repl.add(new VarInsnNode(Opcodes.ILOAD, slot));
+                pushInt(repl, m);
+                repl.add(new InsnNode(Opcodes.IXOR));
+                repl.add(new InsnNode(Opcodes.ISUB));
+                repl.add(new VarInsnNode(Opcodes.ILOAD, slot));
+                pushInt(repl, m);
+                repl.add(new InsnNode(Opcodes.IAND));
+                repl.add(new InsnNode(Opcodes.ISUB));
+                repl.add(new JumpInsnNode(Opcodes.IFEQ, cont));
+            }
+            case 5 -> {
+                repl.add(new VarInsnNode(Opcodes.ILOAD, slot));
+                pushInt(repl, ~m);
+                repl.add(new InsnNode(Opcodes.IAND));
+                repl.add(new VarInsnNode(Opcodes.ILOAD, slot));
+                pushInt(repl, m);
+                repl.add(new InsnNode(Opcodes.IAND));
+                repl.add(new InsnNode(Opcodes.IADD));
+                repl.add(new VarInsnNode(Opcodes.ILOAD, slot));
+                repl.add(new InsnNode(Opcodes.ISUB));
+                repl.add(new JumpInsnNode(Opcodes.IFEQ, cont));
+            }
+            case 6 -> {
+                repl.add(new VarInsnNode(Opcodes.ILOAD, slot));
+                repl.add(new VarInsnNode(Opcodes.ILOAD, slot));
+                repl.add(new InsnNode(Opcodes.ICONST_1));
+                repl.add(new InsnNode(Opcodes.IADD));
+                repl.add(new InsnNode(Opcodes.IMUL));
+                repl.add(new InsnNode(Opcodes.ICONST_1));
+                repl.add(new InsnNode(Opcodes.IAND));
+                repl.add(new JumpInsnNode(Opcodes.IFEQ, cont));
+            }
+            case 7 -> {
+                repl.add(new VarInsnNode(Opcodes.ILOAD, slot));
+                pushInt(repl, 33);
+                repl.add(new InsnNode(Opcodes.IMUL));
+                repl.add(new VarInsnNode(Opcodes.ILOAD, slot));
+                pushInt(repl, 5);
+                repl.add(new InsnNode(Opcodes.ISHL));
+                repl.add(new InsnNode(Opcodes.ISUB));
+                repl.add(new VarInsnNode(Opcodes.ILOAD, slot));
+                repl.add(new InsnNode(Opcodes.ISUB));
+                repl.add(new JumpInsnNode(Opcodes.IFEQ, cont));
+            }
+            case 8 -> {
+                int a = m | 1;
+                int inv = a;
+                inv *= 2 - a * inv;
+                inv *= 2 - a * inv;
+                inv *= 2 - a * inv;
+                inv *= 2 - a * inv;
+                repl.add(new VarInsnNode(Opcodes.ILOAD, slot));
+                pushInt(repl, a);
+                repl.add(new InsnNode(Opcodes.IMUL));
+                pushInt(repl, inv);
+                repl.add(new InsnNode(Opcodes.IMUL));
+                repl.add(new VarInsnNode(Opcodes.ILOAD, slot));
+                repl.add(new InsnNode(Opcodes.ISUB));
+                repl.add(new JumpInsnNode(Opcodes.IFEQ, cont));
+            }
+            default -> {
+                int s = 1 + (Math.abs(m) % 31);
+                repl.add(new VarInsnNode(Opcodes.ILOAD, slot));
+                pushInt(repl, s);
+                repl.add(new MethodInsnNode(Opcodes.INVOKESTATIC, "java/lang/Integer", "rotateLeft", "(II)I", false));
+                pushInt(repl, s);
+                repl.add(new MethodInsnNode(Opcodes.INVOKESTATIC, "java/lang/Integer", "rotateRight", "(II)I", false));
                 repl.add(new VarInsnNode(Opcodes.ILOAD, slot));
                 repl.add(new InsnNode(Opcodes.ISUB));
                 repl.add(new JumpInsnNode(Opcodes.IFEQ, cont));
