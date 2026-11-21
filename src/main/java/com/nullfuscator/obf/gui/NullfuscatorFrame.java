@@ -3322,7 +3322,7 @@ public final class NullfuscatorFrame extends JFrame {
             sb.append("  enabled: true\n");
             List<String> inc = parseCommaOrLineSeparated(runtimeIntegrityIncludeField.getText());
             if (!inc.isEmpty()) {
-                sb.append("  include: [ ").append(joinQuotedHocon(inc)).append(" ]\n");
+                sb.append("  \"include\": [ ").append(joinQuotedHocon(inc)).append(" ]\n");
             }
             sb.append("}\n\n");
         } else {
