@@ -132,8 +132,11 @@ public final class Remapping {
         return sb.toString();
     }
 
-    /** Classes named by known runtime resources must retain their external names. */
     public static Set<String> resourceClassReferences(ObfContext ctx) {
+        return resourceClassReferences(ctx, true);
+    }
+
+    public static Set<String> resourceClassReferences(ObfContext ctx, boolean includeMixins) {
         Set<String> references = new HashSet<>();
 
         for (Map.Entry<String, byte[]> entry : ctx.resources().entrySet()) {
@@ -146,7 +149,7 @@ public final class Remapping {
                 } catch (RuntimeException e) {
                     ctx.log().warn("cannot inspect class references in " + path);
                 }
-            } else if (path.endsWith(".mixins.json")) {
+            } else if (includeMixins && path.endsWith(".mixins.json")) {
                 try {
                     var config = ConfigFactory.parseString(text);
                     String pkg = config.hasPath("package") ? config.getString("package") : "";

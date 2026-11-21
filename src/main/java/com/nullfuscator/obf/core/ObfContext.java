@@ -92,13 +92,34 @@ public final class ObfContext {
         return config;
     }
 
+    private static final Set<String> DANGEROUS_FOR_MIXINS = Set.of(
+            "fileCrasher", "antiDecompiler", "bogusJump", "fieldPacking",
+            "fieldIndirection", "referenceHiding", "crossClassDispersion",
+            "methodExtraction", "methodRelocation", "semanticCore",
+            "semanticFabric", "releaseHardening"
+    );
+
+    public static boolean isDangerousForMixins(String sectionId) {
+        return DANGEROUS_FOR_MIXINS.contains(sectionId);
+    }
+
     public boolean isExempt(String sectionId, ClassNode cn) {
-        return cn == null || isMixin(cn)
-                || config.section(sectionId).isExempt(cn.name)
+        if (cn == null) {
+            return true;
+        }
+        if (isMixin(cn)) {
+            if (isDangerousForMixins(sectionId) || config.exemptMixins()) {
+                return true;
+            }
+        }
+        return config.section(sectionId).isExempt(cn.name)
                 || config.section(sectionId).isExempt(originalName(cn.name));
     }
 
-    private static boolean isMixin(ClassNode cn) {
+    public static boolean isMixin(ClassNode cn) {
+        if (cn == null) {
+            return false;
+        }
         String marker = "Lorg/spongepowered/asm/mixin/Mixin;";
         return (cn.visibleAnnotations != null
                 && cn.visibleAnnotations.stream().anyMatch(a -> marker.equals(a.desc)))

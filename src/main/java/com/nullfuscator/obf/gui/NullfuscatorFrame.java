@@ -6,6 +6,7 @@ import com.nullfuscator.obf.core.ObfMapping;
 
 import javax.imageio.ImageIO;
 import javax.swing.*;
+import javax.swing.border.CompoundBorder;
 import javax.swing.border.EmptyBorder;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
@@ -68,7 +69,7 @@ public final class NullfuscatorFrame extends JFrame {
     private final JLabel jarTreeInfoLabel = new JLabel("Файлы архива не загружены");
 
     private final JTextArea exemptionsArea = new JTextArea();
-    private final JCheckBox exemptMixinsCheck = new JCheckBox("Исключать все миксины (*/mixin/*)", false);
+    private final JCheckBox exemptMixinsCheck = new JCheckBox("Исключать все миксины (полный пропуск)", false);
     private final JCheckBox keepPublicMethodsCheck = new JCheckBox("Не переименовывать публичные методы", false);
     private final JCheckBox keepVirtualMethodsCheck = new JCheckBox("Не переименовывать виртуальные методы", false);
     private final JCheckBox keepSignaturesCheck = new JCheckBox("Сохранять сигнатуры дженериков (для Gson/Jackson)", false);
@@ -618,6 +619,25 @@ public final class NullfuscatorFrame extends JFrame {
 
         menu.addSeparator();
 
+        boolean inIntegrity = isNodeInIntegrity(node);
+        if (node.isLeaf() && isClassNode(node)) {
+            if (inIntegrity) {
+                JMenuItem removeIntegrityItem = new JMenuItem("Убрать из контроля целостности");
+                removeIntegrityItem.addActionListener(e -> removeNodeFromIntegrity(node));
+                menu.add(removeIntegrityItem);
+            } else {
+                JMenuItem addIntegrityItem = new JMenuItem("Добавить в контроль целостности");
+                addIntegrityItem.addActionListener(e -> addNodeToIntegrity(node, false));
+                menu.add(addIntegrityItem);
+            }
+        } else if (!node.isLeaf()) {
+            JMenuItem addPkgIntegrityItem = new JMenuItem("Добавить весь пакет в контроль целостности (*)");
+            addPkgIntegrityItem.addActionListener(e -> addNodeToIntegrity(node, true));
+            menu.add(addPkgIntegrityItem);
+        }
+
+        menu.addSeparator();
+
         JMenuItem copyItem = new JMenuItem("Скопировать полное имя");
         copyItem.addActionListener(e -> copySelectedTreeNodeName());
         menu.add(copyItem);
@@ -866,13 +886,10 @@ public final class NullfuscatorFrame extends JFrame {
         }
 
         String current = exemptionsArea.getText();
-        if (current == null || current.isBlank()) {
-            return;
-        }
-
-        String[] lines = current.split("\n");
+        String[] lines = (current != null && !current.isBlank()) ? current.split("\n") : new String[0];
         List<String> remaining = new ArrayList<>();
         String removed = null;
+        boolean expanded = false;
 
         boolean hasExact = false;
         for (String line : lines) {
@@ -882,6 +899,9 @@ public final class NullfuscatorFrame extends JFrame {
                 break;
             }
         }
+
+        DefaultMutableTreeNode root = (DefaultMutableTreeNode) jarTree.getModel().getRoot();
+        List<DefaultMutableTreeNode> allLeaves = getAllClassLeaves(root);
 
         for (String line : lines) {
             String trimmed = line.trim();
@@ -899,16 +919,88 @@ public final class NullfuscatorFrame extends JFrame {
 
             if (shouldRemove) {
                 removed = trimmed;
+                if (!hasExact) {
+                    for (DefaultMutableTreeNode leaf : allLeaves) {
+                        if (leaf == node || node.isNodeDescendant(leaf)) {
+                            continue;
+                        }
+                        if (matchesExemptionPattern(leaf, trimmed)) {
+                            String full = getNodeFullPath(leaf);
+                            if (!remaining.contains(full)) {
+                                remaining.add(full);
+                            }
+                            expanded = true;
+                        }
+                    }
+                }
             } else {
                 remaining.add(line);
             }
         }
 
+        if (exemptMixinsCheck.isSelected() && isMixinNode(node)) {
+            exemptMixinsCheck.setSelected(false);
+            for (DefaultMutableTreeNode leaf : allLeaves) {
+                if (leaf == node || node.isNodeDescendant(leaf)) {
+                    continue;
+                }
+                if (isMixinNode(leaf)) {
+                    String full = getNodeFullPath(leaf);
+                    if (!remaining.contains(full)) {
+                        remaining.add(full);
+                    }
+                }
+            }
+            if (removed == null) {
+                removed = "миксины (exemptMixins)";
+            }
+        }
+
         if (removed != null) {
             exemptionsArea.setText(String.join("\n", remaining));
-            log("[-] Удалено из исключений: " + removed);
+            if (expanded) {
+                log("[-] Удалено из исключений: " + getNodeFullPath(node) + " (пакет " + removed + " раскрыт)");
+            } else {
+                log("[-] Удалено из исключений: " + removed);
+            }
             jarTree.repaint();
         }
+    }
+
+    private List<DefaultMutableTreeNode> getAllClassLeaves(DefaultMutableTreeNode root) {
+        List<DefaultMutableTreeNode> leaves = new ArrayList<>();
+        if (root == null) {
+            return leaves;
+        }
+        Enumeration<?> en = root.depthFirstEnumeration();
+        while (en.hasMoreElements()) {
+            DefaultMutableTreeNode n = (DefaultMutableTreeNode) en.nextElement();
+            if (n.isLeaf() && n != root && isClassNode(n)) {
+                leaves.add(n);
+            }
+        }
+        return leaves;
+    }
+
+    private boolean isClassNode(DefaultMutableTreeNode node) {
+        if (node == null || !node.isLeaf()) {
+            return false;
+        }
+        List<String> segs = getNodeSegments(node);
+        return !segs.isEmpty() && segs.get(segs.size() - 1).endsWith(".class");
+    }
+
+    private boolean isMixinNode(DefaultMutableTreeNode node) {
+        if (node == null) {
+            return false;
+        }
+        List<String> segs = getNodeSegments(node);
+        if (segs.isEmpty()) {
+            return false;
+        }
+        String slash = String.join("/", segs).toLowerCase();
+        return slash.contains("/mixin/") || slash.contains("/mixins/")
+                || slash.startsWith("mixin/") || slash.startsWith("mixins/");
     }
 
     private void addSelectedTreeNodesToExemptions(boolean entirePackage) {
@@ -1037,6 +1129,281 @@ public final class NullfuscatorFrame extends JFrame {
         return getNodeDotPath(node);
     }
 
+    private boolean isNodeInIntegrity(DefaultMutableTreeNode node) {
+        if (node == null || node == jarTree.getModel().getRoot()) {
+            return false;
+        }
+        String raw = runtimeIntegrityIncludeField.getText();
+        if (raw == null || raw.isBlank()) {
+            return false;
+        }
+        List<String> items = parseCommaOrLineSeparated(raw);
+        if (items.isEmpty()) {
+            return false;
+        }
+        List<String> segs = getNodeSegments(node);
+        if (segs.isEmpty()) {
+            return false;
+        }
+        String dotPath = getNodeDotPath(node);
+        String slashPath = String.join("/", segs);
+        for (String item : items) {
+            String p = item.trim();
+            if (p.isEmpty()) continue;
+            if (matchesIntegrityPattern(dotPath, p) || matchesIntegrityPattern(slashPath, p)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean matchesIntegrityPattern(String target, String pattern) {
+        if (target == null || pattern == null) {
+            return false;
+        }
+        String t = target.replace('/', '.');
+        String p = pattern.replace('/', '.');
+        if (p.endsWith(".*")) {
+            String prefix = p.substring(0, p.length() - 2);
+            return t.equals(prefix) || t.startsWith(prefix + ".");
+        }
+        if (p.endsWith("*")) {
+            String prefix = p.substring(0, p.length() - 1);
+            return t.startsWith(prefix);
+        }
+        return t.equalsIgnoreCase(p);
+    }
+
+    private void addNodeToIntegrity(DefaultMutableTreeNode node, boolean entirePackage) {
+        if (node == null || node == jarTree.getModel().getRoot()) {
+            return;
+        }
+        String target;
+        if (entirePackage) {
+            target = getNodeDotPath(node) + ".*";
+        } else {
+            target = getNodeDotPath(node);
+        }
+        if (target.isEmpty()) {
+            return;
+        }
+        String current = runtimeIntegrityIncludeField.getText().trim();
+        List<String> items = new ArrayList<>(parseCommaOrLineSeparated(current));
+        if (!items.contains(target)) {
+            items.add(target);
+            runtimeIntegrityIncludeField.setText(String.join(", ", items));
+            log("[+] Добавлено в контроль целостности: " + target);
+            jarTree.repaint();
+        }
+    }
+
+    private void removeNodeFromIntegrity(DefaultMutableTreeNode node) {
+        if (node == null || node == jarTree.getModel().getRoot()) {
+            return;
+        }
+        String current = runtimeIntegrityIncludeField.getText();
+        if (current == null || current.isBlank()) {
+            return;
+        }
+        List<String> items = parseCommaOrLineSeparated(current);
+        String dotPath = getNodeDotPath(node);
+        List<String> remaining = new ArrayList<>();
+        String removed = null;
+        for (String item : items) {
+            if (item.equalsIgnoreCase(dotPath) || matchesIntegrityPattern(dotPath, item)) {
+                removed = item;
+            } else {
+                remaining.add(item);
+            }
+        }
+        if (removed != null) {
+            runtimeIntegrityIncludeField.setText(String.join(", ", remaining));
+            log("[-] Удалено из контроля целостности: " + removed);
+            jarTree.repaint();
+        }
+    }
+
+    private void openIntegrityClassPicker() {
+        DefaultMutableTreeNode root = (DefaultMutableTreeNode) jarTree.getModel().getRoot();
+        if (root == null || root.getChildCount() == 0 || "Файл не выбран".equals(root.getUserObject())
+                || "Перетащи JAR или выбери файл".equals(root.getUserObject())) {
+            JOptionPane.showMessageDialog(this, "Сначала выбери входной JAR-файл в главном окне.",
+                    "Выбор классов", JOptionPane.INFORMATION_MESSAGE);
+            return;
+        }
+
+        List<DefaultMutableTreeNode> leaves = getAllClassLeaves(root);
+        if (leaves.isEmpty()) {
+            JOptionPane.showMessageDialog(this, "В загруженном JAR-файле не найдено .class файлов.",
+                    "Выбор классов", JOptionPane.INFORMATION_MESSAGE);
+            return;
+        }
+
+        List<String> classNames = new ArrayList<>();
+        for (DefaultMutableTreeNode leaf : leaves) {
+            String dotPath = getNodeDotPath(leaf);
+            if (!dotPath.isEmpty() && !classNames.contains(dotPath)) {
+                classNames.add(dotPath);
+            }
+        }
+        Collections.sort(classNames);
+
+        Set<String> currentSelected = new HashSet<>(parseCommaOrLineSeparated(runtimeIntegrityIncludeField.getText()));
+
+        JDialog dialog = new JDialog(this, "Выбор классов для контроля целостности", true);
+        dialog.setLayout(new BorderLayout(10, 10));
+        dialog.setSize(620, 520);
+        dialog.setLocationRelativeTo(this);
+
+        JPanel topPanel = new JPanel(new BorderLayout(8, 8));
+        topPanel.setBorder(new EmptyBorder(10, 12, 4, 12));
+        JTextField searchField = new JTextField();
+        searchField.putClientProperty("JTextField.placeholderText", "Поиск по имени класса...");
+        topPanel.add(new JLabel("Фильтр:"), BorderLayout.WEST);
+        topPanel.add(searchField, BorderLayout.CENTER);
+        dialog.add(topPanel, BorderLayout.NORTH);
+
+        class ClassEntry {
+            final String name;
+            boolean selected;
+            ClassEntry(String name, boolean selected) {
+                this.name = name;
+                this.selected = selected;
+            }
+        }
+
+        List<ClassEntry> allEntries = new ArrayList<>();
+        for (String c : classNames) {
+            boolean sel = currentSelected.contains(c) || currentSelected.stream().anyMatch(p -> matchesIntegrityPattern(c, p));
+            allEntries.add(new ClassEntry(c, sel));
+        }
+
+        DefaultListModel<ClassEntry> listModel = new DefaultListModel<>();
+        for (ClassEntry ce : allEntries) {
+            listModel.addElement(ce);
+        }
+
+        JList<ClassEntry> list = new JList<>(listModel);
+        list.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        list.setCellRenderer((l, value, index, isSelected, cellHasFocus) -> {
+            JCheckBox cb = new JCheckBox(value.name, value.selected);
+            cb.setOpaque(true);
+            cb.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
+            if (isSelected) {
+                cb.setBackground(l.getSelectionBackground());
+                cb.setForeground(l.getSelectionForeground());
+            } else {
+                cb.setBackground(l.getBackground());
+                cb.setForeground(l.getForeground());
+            }
+            return cb;
+        });
+
+        JLabel statusLabel = new JLabel();
+        Runnable updateStatus = () -> {
+            long totalSel = allEntries.stream().filter(e -> e.selected).count();
+            statusLabel.setText("Выбрано: " + totalSel + " из " + allEntries.size());
+        };
+        updateStatus.run();
+
+        list.addMouseListener(new java.awt.event.MouseAdapter() {
+            public void mouseClicked(java.awt.event.MouseEvent e) {
+                int index = list.locationToIndex(e.getPoint());
+                if (index >= 0) {
+                    ClassEntry entry = list.getModel().getElementAt(index);
+                    entry.selected = !entry.selected;
+                    list.repaint();
+                    updateStatus.run();
+                }
+            }
+        });
+
+        list.addKeyListener(new java.awt.event.KeyAdapter() {
+            public void keyPressed(java.awt.event.KeyEvent e) {
+                if (e.getKeyCode() == java.awt.event.KeyEvent.VK_SPACE) {
+                    int index = list.getSelectedIndex();
+                    if (index >= 0) {
+                        ClassEntry entry = list.getModel().getElementAt(index);
+                        entry.selected = !entry.selected;
+                        list.repaint();
+                        updateStatus.run();
+                    }
+                }
+            }
+        });
+
+        Runnable applyFilter = () -> {
+            String query = searchField.getText().trim().toLowerCase();
+            listModel.clear();
+            for (ClassEntry ce : allEntries) {
+                if (query.isEmpty() || ce.name.toLowerCase().contains(query)) {
+                    listModel.addElement(ce);
+                }
+            }
+        };
+
+        searchField.getDocument().addDocumentListener(new DocumentListener() {
+            public void insertUpdate(DocumentEvent e) { applyFilter.run(); }
+            public void removeUpdate(DocumentEvent e) { applyFilter.run(); }
+            public void changedUpdate(DocumentEvent e) { applyFilter.run(); }
+        });
+
+        JScrollPane scrollPane = new JScrollPane(list);
+        scrollPane.setBorder(new CompoundBorder(new EmptyBorder(0, 12, 0, 12), scrollPane.getBorder()));
+        dialog.add(scrollPane, BorderLayout.CENTER);
+
+        JPanel bottomPanel = new JPanel(new BorderLayout(8, 8));
+        bottomPanel.setBorder(new EmptyBorder(8, 12, 10, 12));
+
+        JPanel leftButtons = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
+        JButton selectAllBtn = new JButton("Выбрать все");
+        selectAllBtn.addActionListener(e -> {
+            for (int i = 0; i < listModel.size(); i++) {
+                listModel.get(i).selected = true;
+            }
+            list.repaint();
+            updateStatus.run();
+        });
+        JButton deselectAllBtn = new JButton("Снять все");
+        deselectAllBtn.addActionListener(e -> {
+            for (int i = 0; i < listModel.size(); i++) {
+                listModel.get(i).selected = false;
+            }
+            list.repaint();
+            updateStatus.run();
+        });
+        leftButtons.add(selectAllBtn);
+        leftButtons.add(deselectAllBtn);
+        leftButtons.add(Box.createHorizontalStrut(10));
+        leftButtons.add(statusLabel);
+
+        JPanel rightButtons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 0));
+        JButton saveBtn = new JButton("Сохранить");
+        saveBtn.setFont(safeFont(saveBtn.getFont(), Font.BOLD, 12.5f));
+        saveBtn.addActionListener(e -> {
+            List<String> chosen = new ArrayList<>();
+            for (ClassEntry ce : allEntries) {
+                if (ce.selected) {
+                    chosen.add(ce.name);
+                }
+            }
+            runtimeIntegrityIncludeField.setText(String.join(", ", chosen));
+            log("[+] Контроль целостности: выбрано классов " + chosen.size());
+            jarTree.repaint();
+            dialog.dispose();
+        });
+        JButton cancelBtn = new JButton("Отмена");
+        cancelBtn.addActionListener(e -> dialog.dispose());
+        rightButtons.add(saveBtn);
+        rightButtons.add(cancelBtn);
+
+        bottomPanel.add(leftButtons, BorderLayout.WEST);
+        bottomPanel.add(rightButtons, BorderLayout.EAST);
+        dialog.add(bottomPanel, BorderLayout.SOUTH);
+
+        dialog.setVisible(true);
+    }
+
     private final class JarTreeCellRenderer extends DefaultTreeCellRenderer {
         private boolean isCurrentExempt;
         private final Color defaultSelBg = getBackgroundSelectionColor();
@@ -1050,8 +1417,10 @@ public final class NullfuscatorFrame extends JFrame {
             super.getTreeCellRendererComponent(tree, value, sel, expanded, leaf, row, hasFocus);
 
             isCurrentExempt = false;
+            boolean inIntegrity = false;
             if (value instanceof DefaultMutableTreeNode node && node != tree.getModel().getRoot()) {
                 isCurrentExempt = isNodeExempted(node);
+                inIntegrity = isNodeInIntegrity(node);
             }
 
             if (isCurrentExempt) {
@@ -1074,6 +1443,13 @@ public final class NullfuscatorFrame extends JFrame {
                 }
                 if (defaultNonSelFg != null) {
                     setForeground(sel ? defaultSelFg : defaultNonSelFg);
+                }
+            }
+
+            if (inIntegrity) {
+                setText(getText() + "  [Integrity]");
+                if (!isCurrentExempt && !sel) {
+                    setForeground(new Color(56, 189, 248));
                 }
             }
 
@@ -1387,8 +1763,14 @@ public final class NullfuscatorFrame extends JFrame {
         hotPanel.add(hotHintLabel, BorderLayout.SOUTH);
         exTabs.addTab("Горячие пути (hotPaths.exclude)", hotPanel);
 
+        exemptMixinsCheck.setToolTipText("При выключенном флаге активна частичная обфускация миксинов (безопасное переименование классов, обновление mixins.json/refmap, удаление локальных переменных, шифрование строк и чисел). При включенном флаге — миксины полностью пропускаются без изменений.");
         exemptMixinsCheck.addActionListener(e -> jarTree.repaint());
         exemptionsArea.getDocument().addDocumentListener(new DocumentListener() {
+            public void insertUpdate(DocumentEvent e) { jarTree.repaint(); }
+            public void removeUpdate(DocumentEvent e) { jarTree.repaint(); }
+            public void changedUpdate(DocumentEvent e) { jarTree.repaint(); }
+        });
+        runtimeIntegrityIncludeField.getDocument().addDocumentListener(new DocumentListener() {
             public void insertUpdate(DocumentEvent e) { jarTree.repaint(); }
             public void removeUpdate(DocumentEvent e) { jarTree.repaint(); }
             public void changedUpdate(DocumentEvent e) { jarTree.repaint(); }
@@ -1589,7 +1971,17 @@ public final class NullfuscatorFrame extends JFrame {
         crasherCard.add(Box.createVerticalStrut(6));
         crasherCard.add(makeMasterCheck(runtimeIntegrityCheck));
         crasherCard.add(Box.createVerticalStrut(4));
-        JPanel integrityRow = createFieldRow("Классы для контроля целостности (include):", runtimeIntegrityIncludeField);
+
+        JPanel integrityInputPanel = new JPanel(new BorderLayout(6, 0));
+        integrityInputPanel.setOpaque(false);
+        integrityInputPanel.add(runtimeIntegrityIncludeField, BorderLayout.CENTER);
+        JButton pickIntegrityBtn = new JButton("Выбрать из JAR...");
+        pickIntegrityBtn.setFont(safeFont(null, Font.PLAIN, 12f));
+        pickIntegrityBtn.setPreferredSize(new Dimension(145, 28));
+        pickIntegrityBtn.addActionListener(e -> openIntegrityClassPicker());
+        integrityInputPanel.add(pickIntegrityBtn, BorderLayout.EAST);
+
+        JPanel integrityRow = createFieldRow("Классы для контроля целостности (include):", integrityInputPanel);
         crasherCard.add(integrityRow);
         bindToggle(runtimeIntegrityCheck, integrityRow);
         content.add(crasherCard);
@@ -3045,8 +3437,12 @@ public final class NullfuscatorFrame extends JFrame {
 
         List<String> exemptions = new ArrayList<>();
         if (exemptMixinsCheck.isSelected()) {
+            sb.append("defaults.exemptMixins = true\n");
             exemptions.add("\"class{^.*/mixin/}\"");
             exemptions.add("\"class{^.*/mixins/}\"");
+        } else {
+            sb.append("defaults.partialMixins = true\n");
+            sb.append("defaults.exemptMixins = false\n");
         }
 
         String raw = exemptionsArea.getText();

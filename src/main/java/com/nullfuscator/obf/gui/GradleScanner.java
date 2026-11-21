@@ -36,7 +36,7 @@ public final class GradleScanner {
                 "paper-api-", "spigot-api-", "spigot-", "purpur-api-",
                 "velocity-api-", "bungeecord-api-", "protocollib",
                 "grimapi", "fastnbt", "adventure-api-",
-                "gson-", "guava-", "brigadier-", "fastutil-"
+                "gson-", "guava-", "brigadier-", "fastutil-", "joml-"
         );
         Path modules2 = gradleCaches.resolve("modules-2");
         if (Files.isDirectory(modules2)) {
@@ -62,7 +62,7 @@ public final class GradleScanner {
                 "purpur-api-", "velocity-api-", "bungeecord-api-",
                 "protocollib", "grim", "fastnbt", "adventure-api-",
                 "fabric-loader-", "fabric-api-", "sponge-mixin-",
-                "gson-", "guava-", "brigadier-", "fastutil-"
+                "gson-", "guava-", "brigadier-", "fastutil-", "joml-"
         );
         return scanByKeywords(m2Repo, 10, keywords);
     }

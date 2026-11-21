@@ -34,7 +34,7 @@ public final class SourceStripper implements Transformer {
             cn.sourceDebug = null;
 
             boolean preserveSchema = cn.fields.stream().anyMatch(GsonSchemaTransformer::hasName)
-                    || isTypeToken(cn);
+                    || isTypeToken(cn) || ObfContext.isMixin(cn);
 
             if (stripSignatures && !preserveSchema) {
                 cn.signature = null;

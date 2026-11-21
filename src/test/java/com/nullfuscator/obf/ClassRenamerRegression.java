@@ -55,6 +55,7 @@ public final class ClassRenamerRegression {
         mixinReferences("");
         mixinReferences(null);
         pluginDescriptorRemapping();
+        partialMixinRemapping();
     }
 
     private static void mixinReferences(String pkg) {
@@ -136,5 +137,62 @@ public final class ClassRenamerRegression {
         check(updatedYaml.contains("main: a."),
                 "plugin.yml does not contain remapped dotted main class name: " + updatedYaml);
         System.out.println("PASS plugin descriptor remapping: " + updatedYaml.trim().replace("\n", " | "));
+    }
+
+    private static void partialMixinRemapping() {
+        ObfContext context = new ObfContext(ObfConfig.parse("""
+                defaults { partialMixins: true }
+                classRenamer { enabled: true, chars: [ "I", "l" ], depth: 3 }
+                """), 23L, new ObfLog(false), new NameGenerator(new String[] { "I", "l" }));
+
+        String pkg = "dev.ranked.ac.mixin";
+        String prefix = pkg.replace('.', '/') + "/";
+        String[] mixins = { "ChatHudMixin", "SignTextMixin" };
+        for (String m : mixins) {
+            ClassNode node = type(prefix + m);
+            node.visibleAnnotations = new ArrayList<>(java.util.List.of(
+                    new org.objectweb.asm.tree.AnnotationNode("Lorg/spongepowered/asm/mixin/Mixin;")));
+            context.putClass(node);
+        }
+
+        String json = """
+                {
+                  "package": "dev.ranked.ac.mixin",
+                  "client": [
+                    "ChatHudMixin",
+                    "SignTextMixin"
+                  ]
+                }
+                """;
+        context.resources().put("anticheat.mixins.json", json.getBytes(StandardCharsets.UTF_8));
+
+        String refmap = """
+                {
+                  "mappings": {
+                    "dev/ranked/ac/mixin/ChatHudMixin": {
+                      "render": "m_1234"
+                    }
+                  }
+                }
+                """;
+        context.resources().put("anticheat.refmap.json", refmap.getBytes(StandardCharsets.UTF_8));
+
+        new ClassRenamer().transform(context);
+
+        check(context.getClass(prefix + "ChatHudMixin") == null, "ChatHudMixin was not renamed under partialMixins");
+        check(context.getClass(prefix + "SignTextMixin") == null, "SignTextMixin was not renamed under partialMixins");
+
+        byte[] updatedJsonBytes = context.resources().get("anticheat.mixins.json");
+        String updatedJson = new String(updatedJsonBytes, StandardCharsets.UTF_8);
+        check(!updatedJson.contains("ChatHudMixin"), "anticheat.mixins.json still contains ChatHudMixin");
+        check(!updatedJson.contains("SignTextMixin"), "anticheat.mixins.json still contains SignTextMixin");
+        check(updatedJson.contains("\"package\": \"dev.ranked.ac.mixin\""), "package changed in anticheat.mixins.json");
+
+        byte[] updatedRefmapBytes = context.resources().get("anticheat.refmap.json");
+        String updatedRefmap = new String(updatedRefmapBytes, StandardCharsets.UTF_8);
+        check(!updatedRefmap.contains("dev/ranked/ac/mixin/ChatHudMixin"), "refmap still contains old mixin name");
+        check(updatedRefmap.contains("dev/ranked/ac/mixin/"), "refmap does not contain new mixin name");
+
+        System.out.println("PASS partial mixin remapping: mixins.json and refmap updated successfully");
     }
 }
