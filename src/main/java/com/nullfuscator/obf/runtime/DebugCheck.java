@@ -48,6 +48,9 @@ public final class DebugCheck {
                         || lower.startsWith("-agentlib:")
                         || lower.contains("bytebuddy")
                         || lower.contains("aspectj"))) {
+                    if (isIgnoredAgent(lower)) {
+                        continue;
+                    }
                     return true;
                 }
             }
@@ -57,6 +60,23 @@ public final class DebugCheck {
             return true;
         }
         return false;
+    }
+
+    private static boolean isIgnoredAgent(String lower) {
+        return lower.contains("theseus")
+                || lower.contains("authlib-injector")
+                || lower.contains("fabric")
+                || lower.contains("sponge")
+                || lower.contains("curseforge")
+                || lower.contains("prismlauncher")
+                || lower.contains("prism")
+                || lower.contains("multimc")
+                || lower.contains("polymc")
+                || lower.contains("atlauncher")
+                || lower.contains("lunar")
+                || lower.contains("feather")
+                || lower.contains("badlion")
+                || lower.contains("tlauncher");
     }
 
     private static boolean hasAttachedAgent() {
