@@ -11,6 +11,8 @@ import org.objectweb.asm.tree.*;
 import java.nio.charset.StandardCharsets;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -114,25 +116,40 @@ public final class ClassRenamer implements Transformer {
         Map<String, String> packages = new HashMap<>();
         final Map<String, String> classMap = new HashMap<>();
         Set<String> allRenamed = new HashSet<>();
-        for (ClassNode cn : ctx.classes()) {
+        List<ClassNode> sorted = new ArrayList<>(ctx.classes());
+        sorted.sort(Comparator.comparingInt(c -> dollarCount(c.name)));
+
+        for (ClassNode cn : sorted) {
             if (!candidates.contains(cn.name)) {
                 continue;
             }
-            String pkg = packagePrefix(cn.name);
-            String destination = packages.get(pkg);
-            if (destination == null) {
-                destination = pkg;
-                if (!pinnedPackages.contains(pkg)) {
-                    do {
-                        destination = gen.nextRandomClass(prefix, ctx.random(), depth) + "/";
-                    } while (!occupiedPackages.add(destination));
-                }
-                packages.put(pkg, destination);
-            }
+            String outerName = getOuterClassName(ctx, cn.name);
             String newName;
-            do {
-                newName = gen.nextRandomClass(destination, ctx.random(), depth);
-            } while (ctx.getClass(newName) != null || !allRenamed.add(newName));
+            if (outerName != null) {
+                String newOuter = classMap.get(outerName);
+                if (newOuter == null) {
+                    newOuter = outerName;
+                }
+                do {
+                    String simple = gen.nextRandom(ctx.random(), depth);
+                    newName = newOuter + "$" + simple;
+                } while (ctx.getClass(newName) != null || !allRenamed.add(newName));
+            } else {
+                String pkg = packagePrefix(cn.name);
+                String destination = packages.get(pkg);
+                if (destination == null) {
+                    destination = pkg;
+                    if (!pinnedPackages.contains(pkg)) {
+                        do {
+                            destination = gen.nextRandomClass(prefix, ctx.random(), depth) + "/";
+                        } while (!occupiedPackages.add(destination));
+                    }
+                    packages.put(pkg, destination);
+                }
+                do {
+                    newName = gen.nextRandomClass(destination, ctx.random(), depth);
+                } while (ctx.getClass(newName) != null || !allRenamed.add(newName));
+            }
             String name = cn.name;
             classMap.put(name, newName);
             ctx.names().reserve(newName);
@@ -160,6 +177,7 @@ public final class ClassRenamer implements Transformer {
         rewriteServiceDescriptors(ctx, classMap);
         rewritePluginDescriptors(ctx, classMap);
         rewriteMixinDescriptors(ctx, classMap);
+        widenMixinAccess(ctx);
 
         ctx.log().debug("classRenamer renamed " + classMap.size() + " classes");
     }
@@ -188,13 +206,70 @@ public final class ClassRenamer implements Transformer {
                 if (inner.name == null || !renamed.contains(inner.name) || inner.innerName == null) {
                     continue;
                 }
-                inner.innerName = gen.nextRandom(ctx.random(), depth);
+                int dollar = inner.name.lastIndexOf('$');
+                if (dollar >= 0 && dollar + 1 < inner.name.length()) {
+                    inner.innerName = inner.name.substring(dollar + 1);
+                } else {
+                    inner.innerName = gen.nextRandom(ctx.random(), depth);
+                }
                 changed++;
             }
         }
         if (changed > 0) {
             ctx.log().debug("classRenamer hid " + changed + " inner-class labels");
         }
+    }
+
+    private static void widenMixinAccess(ObfContext ctx) {
+        for (ClassNode cn : ctx.classes()) {
+            if (isMixinOrInner(ctx, cn)) {
+                if ((cn.access & (Opcodes.ACC_INTERFACE | Opcodes.ACC_ANNOTATION)) == 0) {
+                    cn.access = (cn.access & ~(Opcodes.ACC_PRIVATE | Opcodes.ACC_PROTECTED)) | Opcodes.ACC_PUBLIC;
+                }
+                for (MethodNode mn : cn.methods) {
+                    if ("<init>".equals(mn.name)) {
+                        mn.access = (mn.access & ~(Opcodes.ACC_PRIVATE | Opcodes.ACC_PROTECTED)) | Opcodes.ACC_PUBLIC;
+                    }
+                }
+            }
+        }
+    }
+
+    private static boolean isMixinOrInner(ObfContext ctx, ClassNode cn) {
+        if (ObfContext.isMixin(cn) || ctx.isMixinPackage(cn.name)) {
+            return true;
+        }
+        String outer = getOuterClassName(ctx, cn.name);
+        while (outer != null) {
+            ClassNode oNode = ctx.getClass(outer);
+            if (oNode != null && (ObfContext.isMixin(oNode) || ctx.isMixinPackage(oNode.name))) {
+                return true;
+            }
+            outer = getOuterClassName(ctx, outer);
+        }
+        return false;
+    }
+
+    private static String getOuterClassName(ObfContext ctx, String className) {
+        int idx = className.lastIndexOf('$');
+        if (idx <= 0) {
+            return null;
+        }
+        String potentialOuter = className.substring(0, idx);
+        if (ctx.getClass(potentialOuter) != null) {
+            return potentialOuter;
+        }
+        return null;
+    }
+
+    private static int dollarCount(String s) {
+        int count = 0;
+        for (int i = 0; i < s.length(); i++) {
+            if (s.charAt(i) == '$') {
+                count++;
+            }
+        }
+        return count;
     }
 
     private static void rewriteManifestEntrypoints(ObfContext ctx, Map<String, String> classMap) {
