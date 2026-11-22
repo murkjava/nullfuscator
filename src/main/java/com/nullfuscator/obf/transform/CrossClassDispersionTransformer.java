@@ -135,9 +135,9 @@ public final class CrossClassDispersionTransformer implements Transformer {
                             do {
                                 name = pkg + ctx.names().next();
                             } while (ctx.getClass(name) != null);
+                            ctx.names().reserve(name);
 
                             ClassNode sink = buildSink(name, rnd, opaqueState);
-                            BytecodeNoise.decorateCarrier(sink, ctx);
                             ctx.markDispersionCarrier(sink);
                             ctx.putClass(sink);
                             sinks.add(sink);

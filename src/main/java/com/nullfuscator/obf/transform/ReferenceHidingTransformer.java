@@ -54,7 +54,11 @@ public final class ReferenceHidingTransformer implements Transformer {
             return;
         }
 
-        int poolSize = ctx.config().section(id()).getInt("bootstrapPoolSize", 8);
+        var sec = ctx.config().section(id());
+        boolean hasPool = sec.raw().hasPath("bootstrapPoolSize");
+        boolean inClass = sec.getBoolean("inClassBootstrap", !hasPool)
+                || "IN_CLASS".equalsIgnoreCase(sec.getString("bootstrapMode", ""));
+        int poolSize = inClass ? 0 : sec.getInt("bootstrapPoolSize", 8);
         if (poolSize < 0 || poolSize > 64) {
             throw new IllegalArgumentException("referenceHiding.bootstrapPoolSize must be 0..64");
         }
@@ -182,6 +186,7 @@ public final class ReferenceHidingTransformer implements Transformer {
                                     host.name = ctx.names().nextClass(cn.name + "$");
                                 } while (ctx.getClass(host.name) != null
                                         || ctx.resources().containsKey(host.name + ".class"));
+                                ctx.names().reserve(host.name);
                             }
 
                             InjectedBootstrap boot = injectBootstrap(ctx, host, secret, secret2, mode);

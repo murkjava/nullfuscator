@@ -200,7 +200,12 @@ public final class MethodExtractionTransformer implements Transformer {
             ClassNode cn = new ClassNode();
             cn.version = version;
             cn.access = Opcodes.ACC_PUBLIC | Opcodes.ACC_FINAL | Opcodes.ACC_SUPER;
-            cn.name = ctx.names().nextRandomClass(BytecodeNoise.randomPackage(ctx, "x"), ctx.random(), 9 + i % 8);
+            String name;
+            do {
+                name = ctx.names().nextRandomClass(BytecodeNoise.randomPackage(ctx, "x"), ctx.random(), 9 + i % 8);
+            } while (ctx.getClass(name) != null);
+            cn.name = name;
+            ctx.names().reserve(name);
             cn.superName = "java/lang/Object";
             cn.methods = new ArrayList<>();
             cn.fields = new ArrayList<>();

@@ -1,6 +1,7 @@
 package com.nullfuscator.obf.transform;
 
 import com.nullfuscator.obf.core.*;
+import com.nullfuscator.obf.util.BytecodeNoise;
 import org.objectweb.asm.*;
 import org.objectweb.asm.commons.ClassRemapper;
 import org.objectweb.asm.commons.SimpleRemapper;
@@ -71,34 +72,57 @@ public final class RuntimeIntegrityTransformer implements Transformer, Opcodes {
 
         int count = Math.max(2, Math.min(8, section.getInt("guards", 3)));
         int percent = Math.max(0, Math.min(100, section.getInt("checkPercent", 10)));
-        String resource = "META-INF/" + ctx.names().next() + ".integrity";
+        String resource = "META-INF/" + ctx.names().next() + ".bin";
         if (ctx.resources().containsKey(resource)) {
             throw new IllegalStateException("Integrity resource collision");
         }
 
         List<String> guards = new ArrayList<>();
+        Map<String, String> guardCheckMethods = new HashMap<>();
         try (InputStream in = getClass().getResourceAsStream("/" + TEMPLATE + ".class")) {
             if (in == null) {
                 throw new IllegalStateException("Integrity template missing");
             }
             byte[] template = in.readAllBytes();
             for (int i = 0; i < count; i++) {
+                String pkg = BytecodeNoise.randomPackage(ctx, "c");
                 String name;
                 do {
-                    name = "a/integrity/" + ctx.names().next();
+                    name = pkg + ctx.names().next();
                 } while (ctx.getClass(name) != null);
+                ctx.names().reserve(name);
+
+                String checkMethod = ctx.names().next();
+                guardCheckMethods.put(name, checkMethod);
+
+                Map<String, String> remap = new HashMap<>();
+                remap.put(TEMPLATE, name);
+                remap.put(TEMPLATE + ".check()V", checkMethod);
+                remap.put(TEMPLATE + ".verify(Ljava/lang/String;)V", ctx.names().next());
+                remap.put(TEMPLATE + ".read(Ljava/lang/String;I)[B", ctx.names().next());
+                remap.put(TEMPLATE + ".normalize([B)V", ctx.names().next());
+                remap.put(TEMPLATE + ".digest([B)[B", ctx.names().next());
+                remap.put(TEMPLATE + ".hex([B)Ljava/lang/String;", ctx.names().next());
+
+                remap.put(TEMPLATE + ".PREFIX", ctx.names().next());
+                remap.put(TEMPLATE + ".initialized", ctx.names().next());
+                remap.put(TEMPLATE + ".failed", ctx.names().next());
+                remap.put(TEMPLATE + ".deadline", ctx.names().next());
+                remap.put(TEMPLATE + ".entries", ctx.names().next());
+                remap.put(TEMPLATE + ".cursor", ctx.names().next());
 
                 ClassNode copy = new ClassNode();
-                new ClassReader(template).accept(new ClassRemapper(copy, new SimpleRemapper(TEMPLATE, name)), 0);
+                new ClassReader(template).accept(new ClassRemapper(copy, new SimpleRemapper(remap)), 0);
                 copy.version = V1_8;
                 copy.sourceFile = null;
                 for (var method : copy.methods) {
                     for (var insn : method.instructions) {
-                        if (insn instanceof LdcInsnNode ldc && "@NULLFUSCATOR_INDEX@".equals(ldc.cst)) {
+                        if (insn instanceof LdcInsnNode ldc && "#INDEX#".equals(ldc.cst)) {
                             ldc.cst = resource;
                         }
                     }
                 }
+                BytecodeNoise.decorateCarrier(copy, ctx);
                 ctx.putClass(copy);
                 guards.add(name);
             }
@@ -131,16 +155,18 @@ public final class RuntimeIntegrityTransformer implements Transformer, Opcodes {
                     continue;
                 }
                 if (Limits.oversizeMethod(method)) {
-                    throw new IllegalStateException("No integrity guard space: " + cn.name);
+                    continue;
                 }
 
                 int first = ctx.random().nextInt(count);
                 InsnList checks = new InsnList();
                 for (int offset = 0; offset < 2; offset++) {
+                    String guardName = guards.get((first + offset) % count);
+                    String checkMethod = guardCheckMethods.get(guardName);
                     checks.add(new MethodInsnNode(
                             INVOKESTATIC,
-                            guards.get((first + offset) % count),
-                            "check",
+                            guardName,
+                            checkMethod,
                             "()V",
                             false));
                 }

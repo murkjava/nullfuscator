@@ -46,7 +46,11 @@ public final class ExceptionReturnTransformer implements Transformer {
         List<ClassNode> tokens = new ArrayList<>();
         for (int i = 0; i < tokenCount; i++) {
             String pkg = BytecodeNoise.randomPackage(ctx, "rt");
-            String tName = pkg + ctx.names().next();
+            String tName;
+            do {
+                tName = pkg + ctx.names().next();
+            } while (ctx.getClass(tName) != null);
+            ctx.names().reserve(tName);
             ClassNode tNode = buildToken(tName, version, rnd);
             BytecodeNoise.decorateCarrier(tNode, ctx);
             tokenNames.add(tName);
@@ -163,7 +167,7 @@ public final class ExceptionReturnTransformer implements Transformer {
                 "java/lang/RuntimeException",
                 "java/lang/IllegalStateException",
                 "java/lang/IllegalArgumentException",
-                "java/lang/NoSuchElementException",
+                "java/lang/IndexOutOfBoundsException",
                 "java/lang/UnsupportedOperationException"
         };
         String superName = bases[rnd.nextInt(bases.length)];

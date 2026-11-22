@@ -49,10 +49,6 @@ public final class StringEncryptionTransformer implements Transformer {
         int cachedConstants = 0;
 
         for (ClassNode cn : ctx.targets(id())) {
-            if (ctx.isHotClass(cn)) {
-                continue;
-            }
-
             boolean isInterface = (cn.access & ACC_INTERFACE) != 0;
             int majorVersion = cn.version & 0xFFFF;
             if (isInterface && majorVersion < V1_8) {
@@ -68,16 +64,13 @@ public final class StringEncryptionTransformer implements Transformer {
             List<ConcatHit> concatHits = new ArrayList<>();
 
             for (MethodNode mn : cn.methods) {
-                if (ctx.isHotPath(cn, mn)) {
-                    continue;
-                }
                 if ((mn.access & (ACC_ABSTRACT | ACC_NATIVE)) != 0) {
                     continue;
                 }
                 if (mn.instructions == null || mn.instructions.size() == 0) {
                     continue;
                 }
-                if (com.nullfuscator.obf.core.Limits.oversizeMethod(mn)) {
+                if (mn.instructions != null && mn.instructions.size() > 15000) {
                     continue;
                 }
                 if ((ObfContext.isMixin(cn) || ctx.isMixinPackage(cn.name)) && (mn.name.equals("<init>") || mn.name.equals("<clinit>"))) {
@@ -182,7 +175,7 @@ public final class StringEncryptionTransformer implements Transformer {
 
                     if ((fn.access & ACC_STATIC) != 0) {
                         MethodNode clinit = findOrCreateClinit(cn);
-                        if (clinit == null || com.nullfuscator.obf.core.Limits.oversizeMethod(clinit)) {
+                        if (clinit == null || (clinit.instructions != null && clinit.instructions.size() > 15000)) {
                             continue;
                         }
                         int key = rnd.nextInt();

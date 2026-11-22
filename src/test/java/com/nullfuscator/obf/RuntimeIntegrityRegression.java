@@ -1,7 +1,6 @@
 package com.nullfuscator.obf;
 
 import com.nullfuscator.obf.core.*;
-import com.nullfuscator.obf.runtime.IntegrityGuard;
 import com.nullfuscator.obf.transform.RuntimeIntegrityTransformer;
 import com.nullfuscator.obf.util.*;
 import org.objectweb.asm.ClassWriter;
@@ -10,7 +9,9 @@ import org.objectweb.asm.tree.*;
 
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.util.*;
 
 public final class RuntimeIntegrityRegression implements Opcodes {
@@ -24,6 +25,18 @@ public final class RuntimeIntegrityRegression implements Opcodes {
     public static void main(String[] args) throws Exception {
         testEndToEndIntegrity();
         System.out.println("PASS runtime integrity verification and tamper detection");
+    }
+
+    private static Method findCheckMethod(Class<?> clazz) {
+        for (Method m : clazz.getDeclaredMethods()) {
+            if (Modifier.isStatic(m.getModifiers())
+                    && Modifier.isPublic(m.getModifiers())
+                    && m.getReturnType() == void.class
+                    && m.getParameterCount() == 0) {
+                return m;
+            }
+        }
+        throw new NoSuchElementException("Guard check method not found in " + clazz.getName());
     }
 
     private static void testEndToEndIntegrity() throws Exception {
@@ -51,7 +64,7 @@ public final class RuntimeIntegrityRegression implements Opcodes {
 
         Map<String, byte[]> bytecode = new HashMap<>();
         for (ClassNode cn : ctx.classes()) {
-            ClassWriter cw = new ClassWriter(0);
+            ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_FRAMES | ClassWriter.COMPUTE_MAXS);
             cn.accept(cw);
             bytecode.put(cn.name, cw.toByteArray());
         }
@@ -91,7 +104,7 @@ public final class RuntimeIntegrityRegression implements Opcodes {
 
         for (String guardName : plan.guards()) {
             Class<?> guardClass = cl.loadClass(guardName.replace('/', '.'));
-            Method checkM = guardClass.getDeclaredMethod("check");
+            Method checkM = findCheckMethod(guardClass);
             checkM.setAccessible(true);
             checkM.invoke(null);
         }
@@ -104,11 +117,16 @@ public final class RuntimeIntegrityRegression implements Opcodes {
         String firstGuard = plan.guards().iterator().next();
         Class<?> freshGuardClass = cl.loadClass(firstGuard.replace('/', '.'));
         try {
-            Method reset = freshGuardClass.getDeclaredMethod("check");
+            Method reset = findCheckMethod(freshGuardClass);
             reset.setAccessible(true);
-            java.lang.reflect.Field initField = freshGuardClass.getDeclaredField("initialized");
-            initField.setAccessible(true);
-            initField.set(null, false);
+            for (Field f : freshGuardClass.getDeclaredFields()) {
+                if (Modifier.isStatic(f.getModifiers())
+                        && Modifier.isVolatile(f.getModifiers())
+                        && f.getType() == boolean.class) {
+                    f.setAccessible(true);
+                    f.set(null, false);
+                }
+            }
             reset.invoke(null);
         } catch (Exception e) {
             tamperedDetected = true;

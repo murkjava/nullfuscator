@@ -658,6 +658,7 @@ public final class Main {
 
         p.add(new NumberEncryptionTransformer());
         p.add(new StringEncryptionTransformer());
+        p.add(new ParameterEncryptionTransformer());
 
         p.add(new AntiAiTransformer());
 

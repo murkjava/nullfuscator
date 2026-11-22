@@ -62,13 +62,16 @@ public final class FieldRenamer implements Transformer {
 
         String mixinBlob = ctx.config().exemptMixins() ? Remapping.mixinJsonBlob(ctx) : "";
 
+        boolean skipAnnotatedClasses = section.getBoolean("skipAnnotatedClasses", false);
+        boolean skipAnnotatedFields = section.getBoolean("skipAnnotatedFields", false);
+
         final Map<String, String> renameFields = new HashMap<>();
         for (ClassNode cn : ctx.targets(id())) {
             if ((cn.access & Opcodes.ACC_RECORD) != 0
                     || (cn.recordComponents != null && !cn.recordComponents.isEmpty())) {
                 continue;
             }
-            if (reflectionSensitive(cn)) {
+            if (skipAnnotatedClasses && reflectionSensitive(cn)) {
                 continue;
             }
 
@@ -79,7 +82,7 @@ public final class FieldRenamer implements Transformer {
                 if (section.getBoolean("annotatedOnly", false) && !GsonSchemaTransformer.hasName(fn)) {
                     continue;
                 }
-                if (fn.visibleAnnotations != null && fn.visibleAnnotations.stream()
+                if (skipAnnotatedFields && fn.visibleAnnotations != null && fn.visibleAnnotations.stream()
                         .anyMatch(a -> !GsonSchemaTransformer.isGsonAnnotation(a.desc) && !UNIQUE_DESC.equals(a.desc))) {
                     continue;
                 }

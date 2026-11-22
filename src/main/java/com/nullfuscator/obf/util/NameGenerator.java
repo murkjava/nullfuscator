@@ -73,6 +73,10 @@ public final class NameGenerator {
         used.add(name);
     }
 
+    public synchronized boolean isUsed(String name) {
+        return used.contains(name);
+    }
+
     private String encode(long n) {
         int base = tokens.length;
         StringBuilder sb = new StringBuilder();

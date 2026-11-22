@@ -58,7 +58,11 @@ public final class AntiDebugTransformer implements Transformer {
 
         List<String> detectors = new ArrayList<>();
         for (int i = 0; i < pool; i++) {
-            String name = "a/g/" + ctx.names().next();
+            String name;
+            do {
+                name = "a/g/" + ctx.names().next();
+            } while (ctx.getClass(name) != null);
+            ctx.names().reserve(name);
 
             ClassNode raw = new ClassNode();
             new ClassReader(src).accept(raw, 0);
@@ -67,13 +71,17 @@ public final class AntiDebugTransformer implements Transformer {
             raw.accept(new ClassRemapper(renamed, new SimpleRemapper(SRC, name)));
 
             renamed.version = targetVersion;
-            if (section.getBoolean("rejectAgents", false)) {
-                for (MethodNode method : renamed.methods) {
-                    if (method.name.equals("rejectAgents")) {
-                        method.instructions.clear();
-                        method.instructions.add(new InsnNode(Opcodes.ICONST_1));
-                        method.instructions.add(new InsnNode(Opcodes.IRETURN));
-                    }
+            boolean rejectAgents = section.getBoolean("rejectAgents", false);
+            boolean rejectAttach = section.getBoolean("rejectAttach", false);
+            for (MethodNode method : renamed.methods) {
+                if (method.name.equals("rejectAgents")) {
+                    method.instructions.clear();
+                    method.instructions.add(new InsnNode(rejectAgents ? Opcodes.ICONST_1 : Opcodes.ICONST_0));
+                    method.instructions.add(new InsnNode(Opcodes.IRETURN));
+                } else if (method.name.equals("rejectAttach")) {
+                    method.instructions.clear();
+                    method.instructions.add(new InsnNode(rejectAttach ? Opcodes.ICONST_1 : Opcodes.ICONST_0));
+                    method.instructions.add(new InsnNode(Opcodes.IRETURN));
                 }
             }
             ctx.putClass(renamed);

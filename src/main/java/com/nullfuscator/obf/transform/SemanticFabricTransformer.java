@@ -123,7 +123,12 @@ public final class SemanticFabricTransformer implements Transformer {
             ClassNode cn = new ClassNode();
             cn.version = version;
             cn.access = Opcodes.ACC_PUBLIC | Opcodes.ACC_FINAL | Opcodes.ACC_SYNTHETIC;
-            cn.name = ctx.names().nextRandomClass(pkg, ctx.random(), 7 + i % 5);
+            String name;
+            do {
+                name = ctx.names().nextRandomClass(pkg, ctx.random(), 7 + i % 5);
+            } while (ctx.getClass(name) != null);
+            cn.name = name;
+            ctx.names().reserve(name);
             cn.superName = "java/lang/Object";
             cn.fields = new ArrayList<>();
             cn.methods = new ArrayList<>();

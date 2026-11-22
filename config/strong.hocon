@@ -16,7 +16,9 @@ methodRelocation { percent: 30, maxMethods: 48, carriers: 8 }
 methodExtraction { percent: 30, maxMethods: 64, carriers: 8 }
 referenceHiding { hidePercent: 35 }
 antiDebug { checkPercent: 10, detectors: 3 }
-flatten { percent: 25 }
+safeControlFlow { enabled: true, level: 2 }
+mangledJump { enabled: true }
+flatten { percent: 70, allowReferenceLocals: true }
 fieldIndirection { percent: 30 }
 
 hotPaths.exclude = [

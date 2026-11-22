@@ -87,7 +87,7 @@ public final class FieldPackingTransformer implements Transformer {
                         new Slot(cn.name, state, index++, Type.getType(fn.desc)));
             }
             cn.fields.removeAll(fields);
-            cn.fields.add(new FieldNode(Opcodes.ACC_PRIVATE, state, "[Ljava/lang/Object;", null, null));
+            cn.fields.add(new FieldNode(Opcodes.ACC_PUBLIC, state, "[Ljava/lang/Object;", null, null));
             packed.add(new Packed(cn, state, fields));
         }
 
@@ -143,8 +143,12 @@ public final class FieldPackingTransformer implements Transformer {
         if (!"java/lang/Object".equals(cn.superName)) {
             return false;
         }
-        if (cn.interfaces != null && !cn.interfaces.isEmpty()) {
-            return false;
+        if (cn.interfaces != null) {
+            for (String itf : cn.interfaces) {
+                if ("java/io/Serializable".equals(itf) || "java/io/Externalizable".equals(itf)) {
+                    return false;
+                }
+            }
         }
         if (cn.recordComponents != null && !cn.recordComponents.isEmpty()) {
             return false;

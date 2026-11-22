@@ -2,6 +2,9 @@ package com.nullfuscator.obf.transform;
 
 import com.nullfuscator.obf.core.ObfContext;
 import com.nullfuscator.obf.core.Transformer;
+import org.objectweb.asm.Attribute;
+import org.objectweb.asm.ByteVector;
+import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.tree.*;
 
@@ -34,28 +37,81 @@ public final class AntiDecompilerTransformer implements Transformer {
 
     @Override
     public String description() {
-        return "class-file-legal, source-illegal member poison";
+        return "class-file-legal, source-illegal member poison and AST crasher traps";
     }
 
     @Override
     public void transform(ObfContext ctx) {
-        int level = clamp(ctx.config().section(id()).getInt("level", 1), 1, 3);
+        var section = ctx.config().section(id());
+        int level = clamp(section.getInt("level", 1), 1, 3);
+        boolean cyclicSignatures = section.getBoolean("cyclicSignatures", level >= 2);
+        boolean tryCatchTraps = section.getBoolean("tryCatchTraps", level >= 2);
+        boolean trollStackTraces = section.getBoolean("trollStackTraces", level >= 2);
+        boolean structuralHardening = section.getBoolean("structuralHardening", level >= 2);
+        String trollMessage = section.getString("trollMessage", "  /\\_/\\\n ( o.o )  Stack trace unavailable\n  > ^ <");
+        int trapPercent = clamp(section.getInt("trapPercent", 80), 0, 100);
+        int cyclicDepth = clamp(section.getInt("cyclicDepth", 48), 8, 128);
+        boolean skipAnnotatedClasses = section.getBoolean("skipAnnotatedClasses", false);
+
         Random rnd = ctx.random();
         int classes = 0;
         int fieldPoison = 0;
         int methodPoison = 0;
         int illegal = 0;
+        int cyclicCount = 0;
+        int trapCount = 0;
+        int trollCount = 0;
+        int structuralCount = 0;
 
         for (ClassNode cn : ctx.targets(id())) {
-            if (ctx.isHotClass(cn)) {
+            if (ctx.isHotClass(cn) || ObfContext.isMixin(cn) || ctx.isMixinPackage(cn.name)) {
                 continue;
             }
 
-            if ((cn.access & Opcodes.ACC_INTERFACE) != 0) {
+            if ((cn.access & (Opcodes.ACC_INTERFACE | Opcodes.ACC_ANNOTATION | Opcodes.ACC_MODULE)) != 0) {
                 continue;
             }
 
-            if (reflectionSensitive(cn)) {
+            if (cyclicSignatures && cn.signature == null) {
+                cn.signature = cyclicTypeVariableSignature(cn.superName, cn.interfaces, cyclicDepth);
+                if (level >= 3 && cn.fields != null) {
+                    String fname = ctx.names().next();
+                    cn.fields.add(new FieldNode(
+                            Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC,
+                            fname,
+                            "Ljava/util/List;",
+                            nestedListSignature(cn.name, Math.min(cyclicDepth, 64)),
+                            null));
+                }
+                cyclicCount++;
+            }
+
+            if (tryCatchTraps) {
+                for (MethodNode mn : cn.methods) {
+                    if (mn.name.startsWith("<")
+                            || (mn.access & (Opcodes.ACC_ABSTRACT | Opcodes.ACC_NATIVE)) != 0
+                            || mn.instructions == null
+                            || mn.instructions.size() < 4
+                            || ctx.isHotPath(cn, mn)) {
+                        continue;
+                    }
+                    if (rnd.nextInt(100) < trapPercent) {
+                        injectDecompilerTrap(mn);
+                        trapCount++;
+                    }
+                }
+            }
+
+            if (trollStackTraces) {
+                trollCount += applyTrollStackTraces(cn, trollMessage, ctx);
+            }
+
+            if (structuralHardening) {
+                applyStructuralHardening(cn, rnd);
+                structuralCount++;
+            }
+
+            if (skipAnnotatedClasses && reflectionSensitive(cn)) {
                 continue;
             }
 
@@ -72,7 +128,80 @@ public final class AntiDecompilerTransformer implements Transformer {
         ctx.log().debug("antiDecompiler: classes=" + classes
                 + " fieldPoison=" + fieldPoison
                 + " methodPoison=" + methodPoison
-                + " illegal=" + illegal + " (level=" + level + ")");
+                + " illegal=" + illegal
+                + " cyclicSigs=" + cyclicCount
+                + " traps=" + trapCount
+                + " trollTraces=" + trollCount
+                + " structuralHardening=" + structuralCount
+                + " (level=" + level + ")");
+    }
+
+    private static String cyclicTypeVariableSignature(String superName, List<String> interfaces, int depth) {
+        int variables = Math.max(2, Math.min(64, depth / 4));
+        StringBuilder sb = new StringBuilder(variables * 40 + 64);
+        sb.append('<');
+        for (int i = 0; i < variables; i++) {
+            sb.append("__F").append(i).append(":Ljava/util/List<T__F")
+                    .append((i + 1) % variables)
+                    .append(";>;");
+        }
+        String sName = (superName == null || superName.isEmpty()) ? "java/lang/Object" : superName;
+        sb.append(">L").append(sName).append(';');
+        if (interfaces != null) {
+            for (String iface : interfaces) {
+                sb.append('L').append(iface).append(';');
+            }
+        }
+        return sb.toString();
+    }
+
+    private static String nestedListSignature(String owner, int depth) {
+        StringBuilder sb = new StringBuilder(depth * 18 + owner.length() + 4);
+        for (int i = 0; i < depth; i++) {
+            sb.append("Ljava/util/List<");
+        }
+        sb.append('L').append(owner).append(';');
+        for (int i = 0; i < depth; i++) {
+            sb.append(">;");
+        }
+        return sb.toString();
+    }
+
+    private static void injectDecompilerTrap(MethodNode method) {
+        LabelNode handler = new LabelNode();
+        LabelNode outerStart = new LabelNode();
+        LabelNode innerStart = new LabelNode();
+        LabelNode innerEnd = new LabelNode();
+        LabelNode outerEnd = new LabelNode();
+        LabelNode resume = new LabelNode();
+
+        if (method.tryCatchBlocks == null) {
+            method.tryCatchBlocks = new ArrayList<>();
+        }
+        method.tryCatchBlocks.add(new TryCatchBlockNode(
+                outerStart, outerEnd, handler, "java/lang/Throwable"));
+        method.tryCatchBlocks.add(new TryCatchBlockNode(
+                innerStart, innerEnd, handler, null));
+
+        InsnList trap = new InsnList();
+        trap.add(new InsnNode(Opcodes.ICONST_0));
+        trap.add(new JumpInsnNode(Opcodes.IFNE, outerStart));
+        trap.add(new JumpInsnNode(Opcodes.GOTO, resume));
+        trap.add(outerStart);
+        trap.add(innerStart);
+        trap.add(new InsnNode(Opcodes.ACONST_NULL));
+        trap.add(new InsnNode(Opcodes.ATHROW));
+        trap.add(innerEnd);
+        trap.add(outerEnd);
+        trap.add(handler);
+        trap.add(new InsnNode(Opcodes.POP));
+        trap.add(new JumpInsnNode(Opcodes.GOTO, resume));
+        trap.add(resume);
+
+        method.instructions.insert(trap);
+        if (method.maxStack < 1) {
+            method.maxStack = 1;
+        }
     }
 
     private int addFieldCollisions(ClassNode cn, int level, Random rnd, ObfContext ctx) {
@@ -260,5 +389,136 @@ public final class AntiDecompilerTransformer implements Transformer {
             }
         }
         return false;
+    }
+
+    private static int applyTrollStackTraces(ClassNode cn, String message, ObfContext ctx) {
+        String helperName = "__nf$troll";
+        int suffix = 0;
+        while (hasMethodNamed(cn, helperName)) {
+            helperName = "__nf$troll$" + (++suffix);
+        }
+        Set<String> neededHelpers = new HashSet<>();
+        int rewritten = 0;
+        for (MethodNode mn : cn.methods) {
+            if (mn.instructions == null || mn.name.equals(helperName)) {
+                continue;
+            }
+            for (AbstractInsnNode insn = mn.instructions.getFirst(); insn != null; insn = insn.getNext()) {
+                if (!(insn instanceof MethodInsnNode call)
+                        || call.getOpcode() != Opcodes.INVOKEVIRTUAL
+                        || !call.name.equals("printStackTrace")
+                        || !isThrowableOwner(ctx, call.owner)
+                        || !isSupportedPrintStackTrace(call.desc)) {
+                    continue;
+                }
+                String helperDesc = helperDescriptor(call.desc);
+                mn.instructions.set(call, new MethodInsnNode(Opcodes.INVOKESTATIC, cn.name, helperName, helperDesc, false));
+                neededHelpers.add(helperDesc);
+                rewritten++;
+            }
+        }
+        for (String desc : neededHelpers) {
+            cn.methods.add(buildTrollHelper(helperName, desc, message));
+        }
+        return rewritten;
+    }
+
+    private static MethodNode buildTrollHelper(String name, String desc, String message) {
+        MethodNode helper = new MethodNode(
+                Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC,
+                name, desc, null, null);
+        if (desc.equals("(Ljava/lang/Throwable;)V")) {
+            helper.instructions.add(new FieldInsnNode(Opcodes.GETSTATIC, "java/lang/System", "err", "Ljava/io/PrintStream;"));
+            helper.instructions.add(new LdcInsnNode(message));
+            helper.instructions.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL, "java/io/PrintStream", "println", "(Ljava/lang/String;)V", false));
+        } else {
+            helper.instructions.add(new VarInsnNode(Opcodes.ALOAD, 1));
+            helper.instructions.add(new LdcInsnNode(message));
+            String owner = desc.contains("PrintWriter") ? "java/io/PrintWriter" : "java/io/PrintStream";
+            helper.instructions.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL, owner, "println", "(Ljava/lang/String;)V", false));
+        }
+        helper.instructions.add(new InsnNode(Opcodes.RETURN));
+        helper.maxStack = 2;
+        helper.maxLocals = desc.equals("(Ljava/lang/Throwable;)V") ? 1 : 2;
+        return helper;
+    }
+
+    private static boolean hasMethodNamed(ClassNode cn, String name) {
+        for (MethodNode mn : cn.methods) {
+            if (mn.name.equals(name)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean isSupportedPrintStackTrace(String desc) {
+        return desc.equals("()V")
+                || desc.equals("(Ljava/io/PrintStream;)V")
+                || desc.equals("(Ljava/io/PrintWriter;)V");
+    }
+
+    private static String helperDescriptor(String original) {
+        return "(Ljava/lang/Throwable;" + original.substring(1);
+    }
+
+    private static boolean isThrowableOwner(ObfContext ctx, String owner) {
+        if (owner == null) {
+            return false;
+        }
+        if (owner.equals("java/lang/Throwable")
+                || owner.equals("java/lang/Exception")
+                || owner.equals("java/lang/Error")
+                || owner.equals("java/lang/RuntimeException")) {
+            return true;
+        }
+        ClassNode cn = ctx.getClass(owner);
+        if (cn != null && cn.superName != null) {
+            return isThrowableOwner(ctx, cn.superName);
+        }
+        return false;
+    }
+
+    private static void applyStructuralHardening(ClassNode cn, Random rnd) {
+        if (cn.attrs == null) {
+            cn.attrs = new ArrayList<>();
+        }
+        for (int i = 0; i < 2; i++) {
+            byte[] payload = new byte[48 + rnd.nextInt(32)];
+            rnd.nextBytes(payload);
+            cn.attrs.add(new OpaqueAttribute("NullfAttr_" + Integer.toHexString(rnd.nextInt(0xFFFFFF)), payload));
+        }
+        for (MethodNode mn : cn.methods) {
+            if ((mn.access & (Opcodes.ACC_ABSTRACT | Opcodes.ACC_NATIVE)) == 0) {
+                if (mn.attrs == null) {
+                    mn.attrs = new ArrayList<>();
+                }
+                byte[] payload = new byte[24 + rnd.nextInt(24)];
+                rnd.nextBytes(payload);
+                mn.attrs.add(new OpaqueAttribute("NullfMethodAttr_" + Integer.toHexString(rnd.nextInt(0xFFFFFF)), payload));
+            }
+        }
+        for (FieldNode fn : cn.fields) {
+            if (fn.attrs == null) {
+                fn.attrs = new ArrayList<>();
+            }
+            byte[] payload = new byte[16 + rnd.nextInt(16)];
+            rnd.nextBytes(payload);
+            fn.attrs.add(new OpaqueAttribute("NullfFieldAttr_" + Integer.toHexString(rnd.nextInt(0xFFFFFF)), payload));
+        }
+    }
+
+    public static final class OpaqueAttribute extends Attribute {
+        private final byte[] data;
+
+        public OpaqueAttribute(String type, byte[] data) {
+            super(type);
+            this.data = data;
+        }
+
+        @Override
+        protected ByteVector write(ClassWriter cw, byte[] code, int len, int maxStack, int maxLocals) {
+            return new ByteVector(data.length).putByteArray(data, 0, data.length);
+        }
     }
 }

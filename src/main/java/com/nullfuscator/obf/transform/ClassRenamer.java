@@ -113,6 +113,7 @@ public final class ClassRenamer implements Transformer {
 
         Map<String, String> packages = new HashMap<>();
         final Map<String, String> classMap = new HashMap<>();
+        Set<String> allRenamed = new HashSet<>();
         for (ClassNode cn : ctx.classes()) {
             if (!candidates.contains(cn.name)) {
                 continue;
@@ -128,9 +129,13 @@ public final class ClassRenamer implements Transformer {
                 }
                 packages.put(pkg, destination);
             }
-            String newName = gen.nextRandomClass(destination, ctx.random(), depth);
+            String newName;
+            do {
+                newName = gen.nextRandomClass(destination, ctx.random(), depth);
+            } while (ctx.getClass(newName) != null || !allRenamed.add(newName));
             String name = cn.name;
             classMap.put(name, newName);
+            ctx.names().reserve(newName);
             ctx.mapping().recordClass(name, newName);
         }
 

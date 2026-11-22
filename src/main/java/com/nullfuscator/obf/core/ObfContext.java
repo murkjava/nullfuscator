@@ -66,6 +66,12 @@ public final class ObfContext {
     }
 
     public void putClass(ClassNode cn) {
+        if (classes.containsKey(cn.name)) {
+            ClassNode existing = classes.get(cn.name);
+            if (existing != cn) {
+                throw new IllegalStateException("Class collision in putClass: " + cn.name + " already exists in context!");
+            }
+        }
         classes.put(cn.name, cn);
     }
 

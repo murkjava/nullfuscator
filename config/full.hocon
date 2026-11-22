@@ -17,15 +17,16 @@ semanticFabric { enabled: true, percent: 100, minArithmeticOps: 3, maxMethods: 9
 
 stringEncryption { enabled: true, type: POLYMORPHIC }
 numberEncryption { enabled: true, layers: 5 }
+parameterEncryption { enabled: true, probability: 50 }
 
-safeControlFlow { enabled: false, level: 3 }
-mangledJump { enabled: false }
+safeControlFlow { enabled: true, level: 3 }
+mangledJump { enabled: true }
 flowSwitch { enabled: true }
 integerReturn { enabled: true }
 exceptionReturn { enabled: true, percent: 100 }
 
 antiAI { enabled: true, level: 3, decoyMethods: 8, constantEncodingPercent: 85 }
-antiDecompiler { enabled: true, level: 3 }
+antiDecompiler { enabled: true, level: 3, cyclicSignatures: true, tryCatchTraps: true, trollStackTraces: true, structuralHardening: true }
 antiDeobf { enabled: true, level: 3, badSignatures: false, badRealClassSignatures: false }
 fileCrasher { enabled: true }
 
@@ -35,14 +36,14 @@ fieldRenamer { enabled: true }
 
 crossClassDispersion { enabled: true, dispersalPercent: 75, sinks: 24, variantsPerOpcode: 2, maxHelpers: 2048, maxOperations: 8192 }
 recordMetadata { enabled: true, eraseIdentity: true }
-methodRelocation { enabled: true, percent: 85, maxMethods: 128, carriers: 16, minInstructions: 20 }
+methodRelocation { enabled: true, percent: 85, maxMethods: 256, carriers: 16, minInstructions: 8 }
 methodExtraction { enabled: true, percent: 100, maxMethods: 160, carriers: 16, minInstructions: 8 }
 fieldPacking { enabled: true, minFields: 1 }
 
-referenceHiding { enabled: true, hidePercent: 100 }
+referenceHiding { enabled: true, hidePercent: 100, inClassBootstrap: true, bootstrapPoolSize: 0 }
 
-antiDebug { enabled: true, checkPercent: 50, detectors: 6 }
+antiDebug { enabled: true, checkPercent: 50, detectors: 6, rejectAttach: false, rejectAgents: false }
 
-flatten { enabled: true, percent: 100, allowReferenceLocals: false }
+flatten { enabled: true, percent: 100, allowReferenceLocals: true }
 
 fieldIndirection { enabled: true, percent: 100 }

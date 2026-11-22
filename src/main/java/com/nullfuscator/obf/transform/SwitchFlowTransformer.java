@@ -30,11 +30,11 @@ public final class SwitchFlowTransformer implements Transformer {
     private static final String[] JUNK_EXCEPTIONS = {
             "java/lang/IllegalStateException",
             "java/lang/IllegalArgumentException",
-            "java/lang/NoSuchElementException",
+            "java/util/NoSuchElementException",
             "java/lang/ArrayIndexOutOfBoundsException",
             "java/lang/UnsupportedOperationException",
             "java/lang/ArithmeticException",
-            "java/lang/ConcurrentModificationException",
+            "java/util/ConcurrentModificationException",
             "java/lang/SecurityException",
             "java/lang/RuntimeException"
     };

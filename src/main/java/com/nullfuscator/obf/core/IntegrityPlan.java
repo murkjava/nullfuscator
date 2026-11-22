@@ -9,10 +9,9 @@ import java.util.HexFormat;
 import java.util.Map;
 import java.util.Set;
 
-/** Sealed only after frame computation and every bytecode pass have completed. */
 public record IntegrityPlan(String resource, Set<String> classes, Set<String> guards) {
 
-    private static final String PREFIX = "nullfuscator-integrity-root:";
+    private static final String PREFIX = "#:";
 
     public byte[] seal(Map<String, byte[]> bytecode) {
         StringBuilder index = new StringBuilder();

@@ -75,6 +75,15 @@ final class RelocationAccess implements AutoCloseable {
 
     private boolean memberAccessible(String owner, String name, String desc, boolean method) {
         if (!classAccessible(owner) || !typeAccessible(Type.getType(desc))) return false;
+        ClassNode owned = ctx.getClass(owner);
+        if (!method && owned != null && !ObfContext.isMixin(owned)) {
+            for (FieldNode fn : owned.fields) {
+                if (fn.name.equals(name) && fn.desc.equals(desc)) {
+                    fn.access = (fn.access & ~(Opcodes.ACC_PRIVATE | Opcodes.ACC_PROTECTED)) | Opcodes.ACC_PUBLIC;
+                    return true;
+                }
+            }
+        }
         Integer flags = memberAccess(owner, name, desc, method, new HashSet<>());
         return flags != null && (flags & Opcodes.ACC_PUBLIC) != 0;
     }
@@ -128,7 +137,13 @@ final class RelocationAccess implements AutoCloseable {
     private boolean classAccessible(String name) {
         if (name.startsWith("[")) return typeAccessible(Type.getType(name));
         ClassNode node = node(name);
-        return node != null && (node.access & Opcodes.ACC_PUBLIC) != 0;
+        if (node == null) return false;
+        if (ctx.getClass(name) != null && !ObfContext.isMixin(node)
+                && (node.access & (Opcodes.ACC_INTERFACE | Opcodes.ACC_ANNOTATION | Opcodes.ACC_MODULE)) == 0) {
+            node.access = (node.access & ~(Opcodes.ACC_PRIVATE | Opcodes.ACC_PROTECTED)) | Opcodes.ACC_PUBLIC;
+            return true;
+        }
+        return (node.access & Opcodes.ACC_PUBLIC) != 0;
     }
 
     private ClassNode node(String name) {

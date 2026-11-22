@@ -85,6 +85,7 @@ public final class AntiDeobfuscatorTransformer implements Transformer {
         boolean poisonInner = ctx.config().section(id()).getBoolean("poisonInnerClasses", level >= 2);
         boolean trapReal = ctx.config().section(id()).getBoolean("trapRealMethods", level >= 2);
         boolean honeypots = ctx.config().section(id()).getBoolean("honeypotEvaluators", level >= 2);
+        boolean skipAnnotatedClasses = ctx.config().section(id()).getBoolean("skipAnnotatedClasses", false);
 
         Random rnd = ctx.random();
         int classes = 0, sigMethods = 0, sigFields = 0, annos = 0, innerPoison = 0, realTrapped = 0, honeypotCount = 0;
@@ -98,7 +99,7 @@ public final class AntiDeobfuscatorTransformer implements Transformer {
             if (ctx.isDispersionCarrier(cn)) continue;
 
             if (com.nullfuscator.obf.core.Limits.hugeClass(cn)) continue;
-            if (reflectionSensitive(cn)) continue;
+            if (skipAnnotatedClasses && reflectionSensitive(cn)) continue;
             if (cn.methods == null) cn.methods = new ArrayList<>();
             if (cn.fields == null) cn.fields = new ArrayList<>();
 

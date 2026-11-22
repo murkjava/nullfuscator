@@ -73,11 +73,13 @@ public final class BytecodeNoise {
             cn.fields.add(fn);
         }
 
-        int extraMethods = 1 + rnd.nextInt(3);
-        for (int i = 0; i < extraMethods; i++) {
-            String name = ctx.names().next();
-            MethodNode mn = generateDecoyMethod(cn.name, name, rnd);
-            cn.methods.add(mn);
+        if (!ctx.isDispersionCarrier(cn)) {
+            int extraMethods = 1 + rnd.nextInt(3);
+            for (int i = 0; i < extraMethods; i++) {
+                String name = ctx.names().next();
+                MethodNode mn = generateDecoyMethod(cn.name, name, rnd);
+                cn.methods.add(mn);
+            }
         }
     }
 
@@ -377,21 +379,23 @@ public final class BytecodeNoise {
         il.add(new VarInsnNode(Opcodes.ALOAD, 0));
         il.add(new InsnNode(Opcodes.ICONST_0));
         il.add(new InsnNode(Opcodes.IALOAD));
+        il.add(new VarInsnNode(Opcodes.ISTORE, 2));
         il.add(new VarInsnNode(Opcodes.ALOAD, 0));
         il.add(new InsnNode(Opcodes.ICONST_1));
         il.add(new InsnNode(Opcodes.IALOAD));
+        il.add(new VarInsnNode(Opcodes.ISTORE, 3));
         il.add(new VarInsnNode(Opcodes.ALOAD, 0));
         il.add(new InsnNode(Opcodes.ICONST_0));
-        il.add(new InsnNode(Opcodes.SWAP));
+        il.add(new VarInsnNode(Opcodes.ILOAD, 3));
         il.add(new InsnNode(Opcodes.IASTORE));
         il.add(new VarInsnNode(Opcodes.ALOAD, 0));
         il.add(new InsnNode(Opcodes.ICONST_1));
-        il.add(new InsnNode(Opcodes.SWAP));
+        il.add(new VarInsnNode(Opcodes.ILOAD, 2));
         il.add(new InsnNode(Opcodes.IASTORE));
         il.add(lExit);
         il.add(new InsnNode(Opcodes.RETURN));
-        mn.maxStack = 4;
-        mn.maxLocals = 2;
+        mn.maxStack = 3;
+        mn.maxLocals = 4;
         return mn;
     }
 
@@ -409,7 +413,7 @@ public final class BytecodeNoise {
         il.add(new InsnNode(Opcodes.DADD));
         il.add(new MethodInsnNode(Opcodes.INVOKESTATIC, "java/lang/Math", "sqrt", "(D)D", false));
         il.add(new InsnNode(Opcodes.DRETURN));
-        mn.maxStack = 4;
+        mn.maxStack = 6;
         mn.maxLocals = 4;
         return mn;
     }

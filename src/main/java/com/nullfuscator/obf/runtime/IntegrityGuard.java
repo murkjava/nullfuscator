@@ -5,10 +5,9 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 
-/** Template copied per build. Checks archive resources, not the JVM's live class definitions. */
 public final class IntegrityGuard {
 
-    private static final String PREFIX = "nullfuscator-integrity-root:";
+    private static final String PREFIX = "#:";
     private static volatile boolean initialized;
     private static volatile boolean failed;
     private static volatile long deadline;
@@ -20,7 +19,7 @@ public final class IntegrityGuard {
 
     public static void check() {
         if (failed) {
-            throw new SecurityException("Application integrity check failed");
+            throw new SecurityException();
         }
         if (initialized && System.nanoTime() - deadline < 0) {
             return;
@@ -28,17 +27,17 @@ public final class IntegrityGuard {
 
         synchronized (IntegrityGuard.class) {
             if (failed) {
-                throw new SecurityException("Application integrity check failed");
+                throw new SecurityException();
             }
             if (initialized && System.nanoTime() - deadline < 0) {
                 return;
             }
 
             try {
-                byte[] index = read("@NULLFUSCATOR_INDEX@", 4 * 1024 * 1024);
-                String expected = "nullfuscator-integrity-root:0000000000000000000000000000000000000000000000000000000000000000";
+                byte[] index = read("#INDEX#", 4 * 1024 * 1024);
+                String expected = "#:0000000000000000000000000000000000000000000000000000000000000000";
                 if (!hex(digest(index)).equals(expected.substring(PREFIX.length()))) {
-                    throw new SecurityException("Integrity index changed");
+                    throw new SecurityException();
                 }
 
                 if (!initialized) {
@@ -60,7 +59,7 @@ public final class IntegrityGuard {
                 initialized = true;
             } catch (Exception e) {
                 failed = true;
-                throw new SecurityException("Application integrity check failed", e);
+                throw new SecurityException();
             }
         }
     }
@@ -68,30 +67,27 @@ public final class IntegrityGuard {
     private static void verify(String entry) throws Exception {
         int separator = entry.indexOf(' ');
         if (separator != 64) {
-            throw new SecurityException("Invalid integrity index");
+            throw new SecurityException();
         }
         String path = entry.substring(65);
         byte[] bytes = read(path, 32 * 1024 * 1024);
-        // Only verifier entries are canonicalized; application constants are all hashed.
-        if (path.startsWith("a/integrity/")) {
-            normalize(bytes);
-        }
+        normalize(bytes);
         if (!hex(digest(bytes)).equals(entry.substring(0, 64))) {
-            throw new SecurityException("Protected class changed");
+            throw new SecurityException();
         }
     }
 
     private static byte[] read(String path, int limit) throws Exception {
         try (InputStream in = IntegrityGuard.class.getResourceAsStream("/".concat(path))) {
             if (in == null) {
-                throw new SecurityException("Protected resource missing");
+                throw new SecurityException();
             }
             ByteArrayOutputStream out = new ByteArrayOutputStream();
             byte[] buffer = new byte[8192];
             int n;
             while ((n = in.read(buffer)) != -1) {
                 if (out.size() > limit - n) {
-                    throw new SecurityException("Protected resource too large");
+                    throw new SecurityException();
                 }
                 out.write(buffer, 0, n);
             }
@@ -124,15 +120,21 @@ public final class IntegrityGuard {
     }
 
     private static byte[] digest(byte[] data) throws Exception {
-        return MessageDigest.getInstance("SHA-256").digest(data);
+        byte[] a = { (byte) (83 ^ 0x33), (byte) (72 ^ 0x33), (byte) (65 ^ 0x33), (byte) (45 ^ 0x33), (byte) (50 ^ 0x33), (byte) (53 ^ 0x33), (byte) (54 ^ 0x33) };
+        for (int i = 0; i < a.length; i++) {
+            a[i] ^= (byte) 0x33;
+        }
+        return MessageDigest.getInstance(new String(a, StandardCharsets.US_ASCII)).digest(data);
     }
 
     private static String hex(byte[] bytes) {
-        char[] alphabet = "0123456789abcdef".toCharArray();
         char[] out = new char[bytes.length * 2];
         for (int i = 0; i < bytes.length; i++) {
-            out[i * 2] = alphabet[(bytes[i] & 255) >>> 4];
-            out[i * 2 + 1] = alphabet[bytes[i] & 15];
+            int v = bytes[i] & 0xFF;
+            int h = v >>> 4;
+            int l = v & 0x0F;
+            out[i * 2] = (char) (h < 10 ? '0' + h : 'a' + (h - 10));
+            out[i * 2 + 1] = (char) (l < 10 ? '0' + l : 'a' + (l - 10));
         }
         return new String(out);
     }

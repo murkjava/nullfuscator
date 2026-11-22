@@ -38,10 +38,10 @@ public final class MethodRelocationTransformer implements Transformer {
 
     private void transform(ObfContext ctx, RelocationAccess access) {
         var sec = ctx.config().section(id());
-        int percent = clamp(sec.getInt("percent", 70), 0, 100);
-        int maxMethods = Math.max(1, sec.getInt("maxMethods", 96));
-        int carrierCount = clamp(sec.getInt("carriers", 12), 3, 48);
-        int minInstructions = Math.max(8, sec.getInt("minInstructions", 20));
+        int percent = clamp(sec.getInt("percent", 85), 0, 100);
+        int maxMethods = Math.max(1, sec.getInt("maxMethods", 256));
+        int carrierCount = clamp(sec.getInt("carriers", 16), 3, 48);
+        int minInstructions = Math.max(4, sec.getInt("minInstructions", 8));
 
         if (percent == 0 || ctx.isModularJar()) {
             return;
@@ -50,9 +50,6 @@ public final class MethodRelocationTransformer implements Transformer {
         List<Candidate> candidates = new ArrayList<>();
         for (ClassNode cn : ctx.targets(id())) {
             if ((cn.access & (Opcodes.ACC_INTERFACE | Opcodes.ACC_ANNOTATION | Opcodes.ACC_MODULE)) != 0) {
-                continue;
-            }
-            if (hasPrivateMembers(cn)) {
                 continue;
             }
             for (MethodNode mn : cn.methods) {
@@ -81,12 +78,16 @@ public final class MethodRelocationTransformer implements Transformer {
             }
 
             ClassNode carrier = carriers.get(rnd.nextInt(carriers.size()));
-            String name = "m" + ctx.names().nextRandom(rnd, 8 + rnd.nextInt(8));
+            String name = ctx.names().next();
             String implDesc = implementationDescriptor(c.owner, c.method);
 
             MethodNode impl = cloneBody(c.method, name, implDesc);
             ctx.transferInputMethod(c.method, impl);
             carrier.methods.add(impl);
+
+            if ((c.method.access & Opcodes.ACC_STATIC) == 0) {
+                c.owner.access = (c.owner.access & ~(Opcodes.ACC_PRIVATE | Opcodes.ACC_PROTECTED)) | Opcodes.ACC_PUBLIC;
+            }
 
             replaceWithBridge(c.owner, c.method, carrier.name, name, implDesc);
             moved++;
@@ -105,8 +106,11 @@ public final class MethodRelocationTransformer implements Transformer {
     }
 
     private static int eligibleScore(MethodNode mn, int minimum) {
-        int forbidden = Opcodes.ACC_ABSTRACT | Opcodes.ACC_NATIVE | Opcodes.ACC_BRIDGE;
+        int forbidden = Opcodes.ACC_ABSTRACT | Opcodes.ACC_NATIVE | Opcodes.ACC_BRIDGE | Opcodes.ACC_SYNCHRONIZED;
         if ((mn.access & forbidden) != 0 || mn.name.charAt(0) == '<') {
+            return -1;
+        }
+        if (mn.name.equals("main") || MethodRenamer.isAgentEntrypoint(mn)) {
             return -1;
         }
         if (mn.instructions == null || mn.instructions.size() < minimum || Limits.oversizeMethod(mn)) {
@@ -137,7 +141,12 @@ public final class MethodRelocationTransformer implements Transformer {
             ClassNode cn = new ClassNode();
             cn.version = version;
             cn.access = Opcodes.ACC_PUBLIC | Opcodes.ACC_FINAL | Opcodes.ACC_SUPER;
-            cn.name = ctx.names().nextRandomClass(BytecodeNoise.randomPackage(ctx, "m"), ctx.random(), 8 + i % 7);
+            String name;
+            do {
+                name = ctx.names().nextRandomClass(BytecodeNoise.randomPackage(ctx, "m"), ctx.random(), 8 + i % 7);
+            } while (ctx.getClass(name) != null);
+            cn.name = name;
+            ctx.names().reserve(name);
             cn.superName = "java/lang/Object";
             cn.methods = new ArrayList<>();
             cn.fields = new ArrayList<>();
@@ -216,20 +225,6 @@ public final class MethodRelocationTransformer implements Transformer {
     }
 
     private record Candidate(ClassNode owner, MethodNode method, int score) {
-    }
-
-    private static boolean hasPrivateMembers(ClassNode cn) {
-        for (var fn : cn.fields) {
-            if ((fn.access & Opcodes.ACC_PRIVATE) != 0) {
-                return true;
-            }
-        }
-        for (var mn : cn.methods) {
-            if ((mn.access & Opcodes.ACC_PRIVATE) != 0) {
-                return true;
-            }
-        }
-        return false;
     }
 
     private static int clamp(int v, int lo, int hi) {

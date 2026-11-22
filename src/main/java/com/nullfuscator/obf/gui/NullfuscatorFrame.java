@@ -2,7 +2,9 @@ package com.nullfuscator.obf.gui;
 
 import com.nullfuscator.obf.core.BuildInfo;
 import com.nullfuscator.obf.core.Main;
+import com.nullfuscator.obf.core.ObfConfig;
 import com.nullfuscator.obf.core.ObfMapping;
+import com.typesafe.config.Config;
 
 import javax.imageio.ImageIO;
 import javax.swing.*;
@@ -23,6 +25,8 @@ import java.awt.dnd.DnDConstants;
 import java.awt.dnd.DropTarget;
 import java.awt.dnd.DropTargetAdapter;
 import java.awt.dnd.DropTargetDropEvent;
+import java.awt.event.FocusAdapter;
+import java.awt.event.FocusEvent;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.io.*;
@@ -65,6 +69,7 @@ public final class NullfuscatorFrame extends JFrame {
 
     private final JTextField seedField = new JTextField();
     private final JTextField customConfigField = new JTextField();
+    private boolean updatingGuiFromConfig = false;
     private final JCheckBox saveMappingCheck = new JCheckBox("Сохранять ProGuard mapping (.map)", false);
 
     private final JTree jarTree = new JTree(new DefaultMutableTreeNode("Перетащи JAR или выбери файл"));
@@ -101,6 +106,11 @@ public final class NullfuscatorFrame extends JFrame {
 
     private final JCheckBox antiDecompilerCheck = new JCheckBox("Защита от декомпиляторов (Anti-Decompiler)", true);
     private final JSpinner antiDecompilerLevelSpinner = new JSpinner(new SpinnerNumberModel(3, 1, 3, 1));
+    private final JCheckBox antiDecompilerCyclicSigCheck = new JCheckBox("Циклические дженерики (StackOverflow в CFR/Fernflower/Recaf)", true);
+    private final JCheckBox antiDecompilerTryCatchTrapCheck = new JCheckBox("Ловушки исключений try-finally (краш AST в Recaf/Vineflower/Procyon)", true);
+    private final JCheckBox antiDecompilerTrollStackTracesCheck = new JCheckBox("Перехват printStackTrace (ASCII-арт заглушка в логах)", true);
+    private final JCheckBox antiDecompilerStructuralHardeningCheck = new JCheckBox("Структурное усложнение (нестандартные атрибуты)", true);
+    private final JSpinner antiDecompilerTrapPercentSpinner = new JSpinner(new SpinnerNumberModel(80, 0, 100, 5));
 
     private final JCheckBox antiDeobfCheck = new JCheckBox("Защита от деобфускаторов (Anti-Deobf AST)", true);
     private final JSpinner antiDeobfLevelSpinner = new JSpinner(new SpinnerNumberModel(3, 1, 3, 1));
@@ -114,6 +124,8 @@ public final class NullfuscatorFrame extends JFrame {
     private final JCheckBox antiDebugCheck = new JCheckBox("Обнаружение отладчиков (Anti-Debug)", true);
     private final JSpinner antiDebugCheckPercentSpinner = new JSpinner(new SpinnerNumberModel(50, 0, 100, 5));
     private final JSpinner antiDebugDetectorsSpinner = new JSpinner(new SpinnerNumberModel(6, 1, 64, 1));
+    private final JCheckBox antiDebugRejectAttachCheck = new JCheckBox("Блокировать внешний Attach (защита от Recaf Attach / VisualVM)", false);
+    private final JCheckBox antiDebugRejectAgentsCheck = new JCheckBox("Блокировать внешние Java-агенты (-javaagent)", false);
 
     private final JCheckBox fileCrasherCheck = new JCheckBox("Мусорные атрибуты для краша утилит (File Crasher)", true);
     private final JCheckBox runtimeIntegrityCheck = new JCheckBox("Контроль целостности архива (Runtime Integrity)", false);
@@ -121,7 +133,7 @@ public final class NullfuscatorFrame extends JFrame {
 
     private final JCheckBox flowFlattenCheck = new JCheckBox("Сглаживание потока (Control Flow Flattening)", true);
     private final JSpinner flowFlattenPercentSpinner = new JSpinner(new SpinnerNumberModel(100, 0, 100, 5));
-    private final JCheckBox flowFlattenAllowRefLocalsCheck = new JCheckBox("Разрешить ссылочные локальные (allowReferenceLocals)", false);
+    private final JCheckBox flowFlattenAllowRefLocalsCheck = new JCheckBox("Разрешить ссылочные локальные (allowReferenceLocals)", true);
 
     private final JCheckBox safeControlFlowCheck = new JCheckBox("Непрозрачные предикаты (Safe Control Flow)", false);
     private final JSpinner safeControlFlowLevelSpinner = new JSpinner(new SpinnerNumberModel(3, 1, 3, 1));
@@ -138,10 +150,13 @@ public final class NullfuscatorFrame extends JFrame {
 
     private final JCheckBox numberEncCheck = new JCheckBox("Шифрование чисел (Number Math)", true);
     private final JSpinner numberEncLayersSpinner = new JSpinner(new SpinnerNumberModel(5, 1, 5, 1));
+    private final JCheckBox parameterEncryptionCheck = new JCheckBox("Шифрование параметров методов (Parameter Encryption)", true);
+    private final JSpinner parameterEncryptionProbabilitySpinner = new JSpinner(new SpinnerNumberModel(50, 0, 100, 5));
 
     private final JCheckBox refHidingCheck = new JCheckBox("Скрытие вызовов invokedynamic (Reference Hiding)", true);
+    private final JCheckBox refHidingInClassCheck = new JCheckBox("Индивидуальный bootstrap внутри каждого класса (In-class BSM)", true);
     private final JSpinner refHidingPercentSpinner = new JSpinner(new SpinnerNumberModel(100, 0, 100, 5));
-    private final JSpinner refHidingBootstrapPoolSpinner = new JSpinner(new SpinnerNumberModel(8, 0, 64, 1));
+    private final JSpinner refHidingBootstrapPoolSpinner = new JSpinner(new SpinnerNumberModel(0, 0, 64, 1));
 
     private final JCheckBox fieldIndirectionCheck = new JCheckBox("Косвенный доступ к полям (Field Indirection)", true);
     private final JSpinner fieldIndirectionPercentSpinner = new JSpinner(new SpinnerNumberModel(100, 0, 100, 5));
@@ -171,7 +186,7 @@ public final class NullfuscatorFrame extends JFrame {
     private final JSpinner methodRelocPercentSpinner = new JSpinner(new SpinnerNumberModel(85, 0, 100, 5));
     private final JSpinner methodRelocMaxMethodsSpinner = new JSpinner(new SpinnerNumberModel(128, 1, 512, 8));
     private final JSpinner methodRelocCarriersSpinner = new JSpinner(new SpinnerNumberModel(16, 3, 48, 1));
-    private final JSpinner methodRelocMinInsnsSpinner = new JSpinner(new SpinnerNumberModel(20, 8, 256, 4));
+    private final JSpinner methodRelocMinInsnsSpinner = new JSpinner(new SpinnerNumberModel(8, 4, 256, 2));
 
     private final JCheckBox methodExtractionCheck = new JCheckBox("Извлечение статических методов (Method Extraction)", true);
     private final JSpinner methodExtractPercentSpinner = new JSpinner(new SpinnerNumberModel(100, 0, 100, 5));
@@ -191,6 +206,7 @@ public final class NullfuscatorFrame extends JFrame {
 
     private final JCheckBox renameFieldsCheck = new JCheckBox("Переименование полей (Field Renamer)", true);
     private final JSpinner fieldDepthSpinner = new JSpinner(new SpinnerNumberModel(8, 1, 32, 1));
+    private final JCheckBox renameFieldsSkipAnnotatedCheck = new JCheckBox("Пропускать аннотированные поля и классы", false);
 
     private final JTextField namingAlphabetField = new JTextField("I, l1, lI, 1l, ll, Il");
 
@@ -266,10 +282,18 @@ public final class NullfuscatorFrame extends JFrame {
         }
 
         presetCombo.addActionListener(e -> {
+            if (updatingGuiFromConfig) {
+                return;
+            }
             applyPresetDefaults((String) presetCombo.getSelectedItem());
             applyProfileDefaults();
         });
-        profileCombo.addActionListener(e -> applyProfileDefaults());
+        profileCombo.addActionListener(e -> {
+            if (updatingGuiFromConfig) {
+                return;
+            }
+            applyProfileDefaults();
+        });
     }
 
     private void setupCheckboxSynchronizations() {
@@ -431,10 +455,24 @@ public final class NullfuscatorFrame extends JFrame {
         JButton browseCfgBtn = new JButton("Обзор...");
         browseCfgBtn.addActionListener(e -> chooseConfigFile());
         JButton clearCfgBtn = new JButton("Сбросить");
-        clearCfgBtn.addActionListener(e -> customConfigField.setText(""));
+        clearCfgBtn.addActionListener(e -> {
+            customConfigField.setText("");
+            applyPresetDefaults((String) presetCombo.getSelectedItem());
+            applyProfileDefaults();
+            updateAllToggles();
+            jarTree.repaint();
+            log("[*] Кастомный конфиг сброшен. Настройки возвращены к пресету " + presetCombo.getSelectedItem());
+        });
         JButton previewCfgBtn = new JButton("HOCON");
         previewCfgBtn.setToolTipText("Предпросмотр сгенерированного HOCON конфига");
         previewCfgBtn.addActionListener(e -> showHoconPreview());
+        customConfigField.addActionListener(e -> tryLoadCustomConfigFromField());
+        customConfigField.addFocusListener(new FocusAdapter() {
+            @Override
+            public void focusLost(FocusEvent e) {
+                tryLoadCustomConfigFromField();
+            }
+        });
         cfgBtnGroup.add(browseCfgBtn);
         cfgBtnGroup.add(clearCfgBtn);
         cfgBtnGroup.add(previewCfgBtn);
@@ -1933,7 +1971,23 @@ public final class NullfuscatorFrame extends JFrame {
         decompCard.add(Box.createVerticalStrut(6));
         JPanel decompLvlRow = createLevelRow("Уровень атак на декомпиляторы (level 1-3):", antiDecompilerLevelSpinner, 1, 3, "ур.");
         decompCard.add(decompLvlRow);
-        bindToggle(antiDecompilerCheck, decompLvlRow);
+        decompCard.add(Box.createVerticalStrut(6));
+        decompCard.add(createSeparator());
+        decompCard.add(Box.createVerticalStrut(6));
+
+        JPanel decompGrid = new JPanel(new GridLayout(4, 1, 8, 6));
+        decompGrid.setOpaque(false);
+        decompGrid.add(antiDecompilerCyclicSigCheck);
+        decompGrid.add(antiDecompilerTryCatchTrapCheck);
+        decompGrid.add(antiDecompilerTrollStackTracesCheck);
+        decompGrid.add(antiDecompilerStructuralHardeningCheck);
+        decompCard.add(decompGrid);
+
+        decompCard.add(Box.createVerticalStrut(4));
+        JPanel decompTrapPctRow = createPercentRow("Процент методов с ловушками исключений:", antiDecompilerTrapPercentSpinner, 0, 100);
+        decompCard.add(decompTrapPctRow);
+
+        bindToggle(antiDecompilerCheck, decompLvlRow, decompGrid, decompTrapPctRow);
         content.add(decompCard);
         content.add(Box.createVerticalStrut(12));
 
@@ -1972,7 +2026,13 @@ public final class NullfuscatorFrame extends JFrame {
         debugCard.add(debugPctRow);
         debugCard.add(Box.createVerticalStrut(4));
         debugCard.add(debugDetRow);
-        bindToggle(antiDebugCheck, debugPctRow, debugDetRow);
+        debugCard.add(Box.createVerticalStrut(6));
+        JPanel debugOptionsGrid = new JPanel(new GridLayout(2, 1, 8, 6));
+        debugOptionsGrid.setOpaque(false);
+        debugOptionsGrid.add(antiDebugRejectAttachCheck);
+        debugOptionsGrid.add(antiDebugRejectAgentsCheck);
+        debugCard.add(debugOptionsGrid);
+        bindToggle(antiDebugCheck, debugPctRow, debugDetRow, debugOptionsGrid);
         content.add(debugCard);
         content.add(Box.createVerticalStrut(12));
 
@@ -2085,6 +2145,18 @@ public final class NullfuscatorFrame extends JFrame {
         content.add(numCard);
         content.add(Box.createVerticalStrut(12));
 
+        JPanel paramCard = createSectionPanel("Шифрование параметров методов (Parameter Encryption)");
+        paramCard.setLayout(new BoxLayout(paramCard, BoxLayout.Y_AXIS));
+        paramCard.add(makeMasterCheck(parameterEncryptionCheck));
+        paramCard.add(Box.createVerticalStrut(4));
+        paramCard.add(createSeparator());
+        paramCard.add(Box.createVerticalStrut(6));
+        JPanel paramPctRow = createPercentRow("Процент методов с шифрованием параметров:", parameterEncryptionProbabilitySpinner, 0, 100);
+        paramCard.add(paramPctRow);
+        bindToggle(parameterEncryptionCheck, paramPctRow);
+        content.add(paramCard);
+        content.add(Box.createVerticalStrut(12));
+
         JPanel indyCard = createSectionPanel("Скрытие вызовов через invokedynamic (Reference Hiding)");
         indyCard.setLayout(new BoxLayout(indyCard, BoxLayout.Y_AXIS));
         indyCard.add(makeMasterCheck(refHidingCheck));
@@ -2093,10 +2165,20 @@ public final class NullfuscatorFrame extends JFrame {
         indyCard.add(Box.createVerticalStrut(6));
         JPanel refPctRow = createPercentRow("Процент скрываемых вызовов:", refHidingPercentSpinner, 0, 100);
         JPanel refPoolRow = createNumberRow("Размер пула bootstrap методов:", refHidingBootstrapPoolSpinner, "шт.");
+        indyCard.add(refHidingInClassCheck);
+        indyCard.add(Box.createVerticalStrut(4));
         indyCard.add(refPctRow);
         indyCard.add(Box.createVerticalStrut(4));
         indyCard.add(refPoolRow);
-        bindToggle(refHidingCheck, refPctRow, refPoolRow);
+        bindToggle(refHidingCheck, refHidingInClassCheck, refPctRow);
+        Runnable updatePoolRow = () -> {
+            boolean active = refHidingCheck.isSelected() && !refHidingInClassCheck.isSelected();
+            setHierarchyEnabled(refPoolRow, active);
+        };
+        refHidingInClassCheck.addActionListener(e -> updatePoolRow.run());
+        refHidingCheck.addActionListener(e -> updatePoolRow.run());
+        toggleUpdaters.add(updatePoolRow);
+        updatePoolRow.run();
         content.add(indyCard);
         content.add(Box.createVerticalStrut(12));
 
@@ -2283,7 +2365,9 @@ public final class NullfuscatorFrame extends JFrame {
         fldCard.add(Box.createVerticalStrut(6));
         JPanel fldDepthRow = createNumberRow("Длина имен полей (depth):", fieldDepthSpinner, "симв.");
         fldCard.add(fldDepthRow);
-        bindToggle(renameFieldsCheck, fldDepthRow);
+        fldCard.add(Box.createVerticalStrut(4));
+        fldCard.add(renameFieldsSkipAnnotatedCheck);
+        bindToggle(renameFieldsCheck, fldDepthRow, renameFieldsSkipAnnotatedCheck);
         content.add(fldCard);
         content.add(Box.createVerticalStrut(12));
 
@@ -2477,7 +2561,549 @@ public final class NullfuscatorFrame extends JFrame {
         JFileChooser chooser = new JFileChooser();
         chooser.setFileFilter(new FileNameExtensionFilter("HOCON конфигурации (*.hocon)", "hocon"));
         if (chooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
-            customConfigField.setText(chooser.getSelectedFile().getAbsolutePath());
+            File selected = chooser.getSelectedFile();
+            customConfigField.setText(selected.getAbsolutePath());
+            loadCustomHoconToGui(selected);
+        }
+    }
+
+    private void tryLoadCustomConfigFromField() {
+        String text = customConfigField.getText().trim();
+        if (text.isEmpty()) {
+            return;
+        }
+        File file = new File(text);
+        if (file.isFile() && file.canRead()) {
+            loadCustomHoconToGui(file);
+        }
+    }
+
+    private void loadCustomHoconToGui(File file) {
+        if (file == null || !file.isFile() || !file.canRead()) {
+            return;
+        }
+        try {
+            ObfConfig rawLoaded = ObfConfig.load(file);
+            String preset = (String) presetCombo.getSelectedItem();
+            if (rawLoaded.raw().hasPath("baseConfig")) {
+                String base = ObfConfig.normalizePresetName(rawLoaded.raw().getString("baseConfig"));
+                if (base != null && ObfConfig.isKnownPreset(base)) {
+                    preset = base;
+                }
+            }
+            ObfConfig cfg = ObfConfig.loadWithPresetFallback(file, preset);
+            updatingGuiFromConfig = true;
+            try {
+                for (int i = 0; i < presetCombo.getItemCount(); i++) {
+                    if (preset.equalsIgnoreCase(presetCombo.getItemAt(i))) {
+                        presetCombo.setSelectedIndex(i);
+                        break;
+                    }
+                }
+                applyPresetDefaults(preset);
+                applyConfigToGui(cfg);
+            } finally {
+                updatingGuiFromConfig = false;
+            }
+            updateAllToggles();
+            jarTree.repaint();
+            log("[+] Загружены настройки из HOCON: " + file.getName());
+        } catch (Exception ex) {
+            log("[!] Ошибка загрузки HOCON (" + file.getName() + "): " + ex.getMessage());
+        }
+    }
+
+    private static void setClampedSpinner(JSpinner spinner, int value) {
+        if (spinner.getModel() instanceof SpinnerNumberModel snm) {
+            Comparable<?> min = snm.getMinimum();
+            Comparable<?> max = snm.getMaximum();
+            int val = value;
+            if (min instanceof Number n && val < n.intValue()) {
+                val = n.intValue();
+            }
+            if (max instanceof Number n && val > n.intValue()) {
+                val = n.intValue();
+            }
+            spinner.setValue(val);
+        } else {
+            spinner.setValue(value);
+        }
+    }
+
+    private static boolean isSectionEnabled(ObfConfig cfg, String sectionName, boolean def) {
+        Config root = cfg.raw();
+        if (root.hasPath(sectionName)) {
+            try {
+                return cfg.section(sectionName).enabled();
+            } catch (Exception e) {
+                try {
+                    return root.getBoolean(sectionName);
+                } catch (Exception ignored) {
+                    return def;
+                }
+            }
+        }
+        return def;
+    }
+
+    private void applyConfigToGui(ObfConfig cfg) {
+        Config root = cfg.raw();
+
+        if (root.hasPath("seed")) {
+            seedField.setText(root.getString("seed"));
+        }
+
+        if (root.hasPath("compatibility.allowMultiReleaseRename")) {
+            allowMultiReleaseCheck.setSelected(root.getBoolean("compatibility.allowMultiReleaseRename"));
+        }
+        if (root.hasPath("compatibility.allowIncompleteClasspath")) {
+            allowIncompleteClasspathCheck.setSelected(root.getBoolean("compatibility.allowIncompleteClasspath"));
+        }
+
+        if (root.hasPath("budgets")) {
+            ObfConfig.Section b = cfg.section("budgets");
+            int jarGrowthPct = b.getInt("maxJarGrowthPercent", -1);
+            budgetsEnabledCheck.setSelected(jarGrowthPct >= 0);
+            if (jarGrowthPct >= 0) {
+                setClampedSpinner(maxJarGrowthPercentSpinner, jarGrowthPct);
+            }
+            if (b.raw().hasPath("jarGrowthAllowanceBytes")) {
+                setClampedSpinner(jarGrowthBytesSpinner, b.getInt("jarGrowthAllowanceBytes", 65536));
+            }
+            if (b.raw().hasPath("maxClassGrowthPercent")) {
+                setClampedSpinner(maxClassGrowthPercentSpinner, b.getInt("maxClassGrowthPercent", 10));
+            }
+            if (b.raw().hasPath("classGrowthAllowance")) {
+                setClampedSpinner(classGrowthAllowanceSpinner, b.getInt("classGrowthAllowance", 4));
+            }
+            if (b.raw().hasPath("maxMethodGrowthPercent")) {
+                setClampedSpinner(maxMethodGrowthPercentSpinner, b.getInt("maxMethodGrowthPercent", 35));
+            }
+            if (b.raw().hasPath("methodGrowthAllowance")) {
+                setClampedSpinner(methodGrowthAllowanceSpinner, b.getInt("methodGrowthAllowance", 64));
+            }
+            if (b.raw().hasPath("maxInstructionGrowthPercent")) {
+                setClampedSpinner(maxInstructionGrowthPercentSpinner, b.getInt("maxInstructionGrowthPercent", 150));
+            }
+            if (b.raw().hasPath("instructionGrowthAllowance")) {
+                setClampedSpinner(instructionGrowthAllowanceSpinner, b.getInt("instructionGrowthAllowance", 1024));
+            }
+        }
+
+        if (root.hasPath("coverage")) {
+            ObfConfig.Section cov = cfg.section("coverage");
+            coverageEnabledCheck.setSelected(cov.getBoolean("enabled", true));
+            if (cov.raw().hasPath("minPercent")) {
+                setClampedSpinner(coverageMinPercentSpinner, cov.getInt("minPercent", 1));
+            }
+            if (cov.raw().hasPath("required")) {
+                coverageRequiredField.setText(String.join(", ", cov.getStringList("required")));
+            }
+        }
+
+        if (root.hasPath("hotPaths.exclude")) {
+            hotPathsArea.setText(String.join("\n", root.getStringList("hotPaths.exclude")));
+        }
+
+        if (root.hasPath("defaults.naming.chars")) {
+            namingAlphabetField.setText(String.join(", ", root.getStringList("defaults.naming.chars")));
+        }
+
+        if (root.hasPath("sourceStrip")) {
+            ObfConfig.Section ss = cfg.section("sourceStrip");
+            sourceStripCheck.setSelected(ss.enabled());
+            if (ss.raw().hasPath("stripLineNumbers")) {
+                stripLineNumbersCheck.setSelected(ss.getBoolean("stripLineNumbers", true));
+            }
+            if (ss.raw().hasPath("stripLocalVars")) {
+                stripLocalVarsCheck.setSelected(ss.getBoolean("stripLocalVars", true));
+            }
+            if (ss.raw().hasPath("stripSignatures")) {
+                boolean stripSig = ss.getBoolean("stripSignatures", false);
+                stripSignaturesCheck.setSelected(stripSig);
+                keepSignaturesCheck.setSelected(!stripSig);
+            }
+        }
+
+        if (root.hasPath("releaseHardening")) {
+            ObfConfig.Section rh = cfg.section("releaseHardening");
+            releaseHardeningCheck.setSelected(rh.enabled());
+            if (rh.raw().hasPath("stripMavenMetadata")) {
+                stripMavenCheck.setSelected(rh.getBoolean("stripMavenMetadata", true));
+            }
+            if (rh.raw().hasPath("stripFabricDescription")) {
+                stripFabricDescCheck.setSelected(rh.getBoolean("stripFabricDescription", true));
+            }
+        }
+
+        if (root.hasPath("stringEncryption")) {
+            ObfConfig.Section se = cfg.section("stringEncryption");
+            stringEncCheck.setSelected(se.enabled());
+            if (se.raw().hasPath("type")) {
+                String t = se.getString("type", "POLYMORPHIC").toUpperCase();
+                for (int i = 0; i < stringEncTypeCombo.getItemCount(); i++) {
+                    if (stringEncTypeCombo.getItemAt(i).equalsIgnoreCase(t)) {
+                        stringEncTypeCombo.setSelectedIndex(i);
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (root.hasPath("numberEncryption")) {
+            ObfConfig.Section ne = cfg.section("numberEncryption");
+            numberEncCheck.setSelected(ne.enabled());
+            if (ne.raw().hasPath("layers")) {
+                setClampedSpinner(numberEncLayersSpinner, ne.getInt("layers", 3));
+            }
+        }
+
+        if (root.hasPath("parameterEncryption")) {
+            ObfConfig.Section pe = cfg.section("parameterEncryption");
+            parameterEncryptionCheck.setSelected(pe.enabled());
+            if (pe.raw().hasPath("probability")) {
+                setClampedSpinner(parameterEncryptionProbabilitySpinner, pe.getInt("probability", 50));
+            }
+        }
+
+        if (root.hasPath("safeControlFlow")) {
+            ObfConfig.Section scf = cfg.section("safeControlFlow");
+            safeControlFlowCheck.setSelected(scf.enabled());
+            if (scf.raw().hasPath("level")) {
+                setClampedSpinner(safeControlFlowLevelSpinner, scf.getInt("level", 2));
+            }
+        }
+
+        if (root.hasPath("flatten")) {
+            ObfConfig.Section fl = cfg.section("flatten");
+            flowFlattenCheck.setSelected(fl.enabled());
+            if (fl.raw().hasPath("percent")) {
+                setClampedSpinner(flowFlattenPercentSpinner, fl.getInt("percent", 70));
+            }
+            if (fl.raw().hasPath("allowReferenceLocals")) {
+                flowFlattenAllowRefLocalsCheck.setSelected(fl.getBoolean("allowReferenceLocals", true));
+            }
+        }
+
+        if (root.hasPath("mangledJump")) {
+            mangledJumpCheck.setSelected(isSectionEnabled(cfg, "mangledJump", false));
+        }
+
+        if (root.hasPath("flowSwitch")) {
+            flowSwitchCheck.setSelected(isSectionEnabled(cfg, "flowSwitch", false));
+        }
+
+        if (root.hasPath("integerReturn")) {
+            integerReturnCheck.setSelected(isSectionEnabled(cfg, "integerReturn", false));
+        }
+
+        if (root.hasPath("exceptionReturn")) {
+            ObfConfig.Section er = cfg.section("exceptionReturn");
+            exceptionReturnCheck.setSelected(er.enabled());
+            if (er.raw().hasPath("percent")) {
+                setClampedSpinner(exceptionReturnPercentSpinner, er.getInt("percent", 25));
+            }
+        }
+
+        if (root.hasPath("antiAI")) {
+            ObfConfig.Section aai = cfg.section("antiAI");
+            antiAiCheck.setSelected(aai.enabled());
+            if (aai.raw().hasPath("level")) {
+                setClampedSpinner(antiAiLevelSpinner, aai.getInt("level", 2));
+            }
+            if (aai.raw().hasPath("decoyMethods")) {
+                setClampedSpinner(antiAiDecoySpinner, aai.getInt("decoyMethods", 3));
+            }
+            if (aai.raw().hasPath("constantEncodingPercent")) {
+                setClampedSpinner(antiAiConstPercentSpinner, aai.getInt("constantEncodingPercent", 35));
+            }
+            if (aai.raw().hasPath("decoyBranchPercent")) {
+                setClampedSpinner(antiAiBranchPercentSpinner, aai.getInt("decoyBranchPercent", 20));
+            }
+        }
+
+        if (root.hasPath("antiDecompiler")) {
+            ObfConfig.Section ad = cfg.section("antiDecompiler");
+            antiDecompilerCheck.setSelected(ad.enabled());
+            if (ad.raw().hasPath("level")) {
+                setClampedSpinner(antiDecompilerLevelSpinner, ad.getInt("level", 3));
+            }
+            if (ad.raw().hasPath("cyclicSignatures")) {
+                antiDecompilerCyclicSigCheck.setSelected(ad.getBoolean("cyclicSignatures", true));
+            }
+            if (ad.raw().hasPath("tryCatchTraps")) {
+                antiDecompilerTryCatchTrapCheck.setSelected(ad.getBoolean("tryCatchTraps", true));
+            }
+            if (ad.raw().hasPath("trapPercent")) {
+                setClampedSpinner(antiDecompilerTrapPercentSpinner, ad.getInt("trapPercent", 80));
+            }
+            if (ad.raw().hasPath("trollStackTraces")) {
+                antiDecompilerTrollStackTracesCheck.setSelected(ad.getBoolean("trollStackTraces", true));
+            }
+            if (ad.raw().hasPath("structuralHardening")) {
+                antiDecompilerStructuralHardeningCheck.setSelected(ad.getBoolean("structuralHardening", true));
+            }
+        }
+
+        if (root.hasPath("antiDeobf")) {
+            ObfConfig.Section adobf = cfg.section("antiDeobf");
+            antiDeobfCheck.setSelected(adobf.enabled());
+            if (adobf.raw().hasPath("level")) {
+                setClampedSpinner(antiDeobfLevelSpinner, adobf.getInt("level", 3));
+            }
+            if (adobf.raw().hasPath("badSignatures")) {
+                antiDeobfBadSigCheck.setSelected(adobf.getBoolean("badSignatures", false));
+            }
+            if (adobf.raw().hasPath("badRealClassSignatures")) {
+                antiDeobfBadClassSigCheck.setSelected(adobf.getBoolean("badRealClassSignatures", false));
+            }
+            if (adobf.raw().hasPath("poisonAnnotations")) {
+                antiDeobfPoisonAnnoCheck.setSelected(adobf.getBoolean("poisonAnnotations", true));
+            }
+            if (adobf.raw().hasPath("poisonInnerClasses")) {
+                antiDeobfPoisonInnerCheck.setSelected(adobf.getBoolean("poisonInnerClasses", true));
+            }
+            if (adobf.raw().hasPath("trapRealMethods")) {
+                antiDeobfTrapRealCheck.setSelected(adobf.getBoolean("trapRealMethods", true));
+            }
+            if (adobf.raw().hasPath("honeypotEvaluators")) {
+                antiDeobfHoneypotsCheck.setSelected(adobf.getBoolean("honeypotEvaluators", true));
+            }
+        }
+
+        if (root.hasPath("antiDebug")) {
+            ObfConfig.Section adbg = cfg.section("antiDebug");
+            antiDebugCheck.setSelected(adbg.enabled());
+            if (adbg.raw().hasPath("checkPercent")) {
+                setClampedSpinner(antiDebugCheckPercentSpinner, adbg.getInt("checkPercent", 10));
+            }
+            if (adbg.raw().hasPath("detectors")) {
+                setClampedSpinner(antiDebugDetectorsSpinner, adbg.getInt("detectors", 2));
+            }
+            if (adbg.raw().hasPath("rejectAttach")) {
+                antiDebugRejectAttachCheck.setSelected(adbg.getBoolean("rejectAttach", false));
+            }
+            if (adbg.raw().hasPath("rejectAgents")) {
+                antiDebugRejectAgentsCheck.setSelected(adbg.getBoolean("rejectAgents", false));
+            }
+        }
+
+        if (root.hasPath("fileCrasher")) {
+            fileCrasherCheck.setSelected(isSectionEnabled(cfg, "fileCrasher", true));
+        }
+
+        if (root.hasPath("runtimeIntegrity")) {
+            ObfConfig.Section ri = cfg.section("runtimeIntegrity");
+            runtimeIntegrityCheck.setSelected(ri.enabled());
+            if (ri.raw().hasPath("include")) {
+                runtimeIntegrityIncludeField.setText(String.join(", ", ri.getStringList("include")));
+            }
+        }
+
+        if (root.hasPath("classRenamer")) {
+            ObfConfig.Section cr = cfg.section("classRenamer");
+            renameClassesCheck.setSelected(cr.enabled());
+            if (cr.raw().hasPath("renameMain")) {
+                renameMainCheck.setSelected(cr.getBoolean("renameMain", true));
+            }
+            if (cr.raw().hasPath("prefix")) {
+                classPrefixField.setText(cr.getString("prefix", "a/"));
+            }
+            if (cr.raw().hasPath("depth")) {
+                setClampedSpinner(classDepthSpinner, cr.getInt("depth", 8));
+            }
+        }
+
+        if (root.hasPath("methodRenamer")) {
+            ObfConfig.Section mr = cfg.section("methodRenamer");
+            renameMethodsCheck.setSelected(mr.enabled());
+            if (mr.raw().hasPath("renamePublic")) {
+                boolean renPub = mr.getBoolean("renamePublic", false);
+                renameMethodsPublicCheck.setSelected(renPub);
+                keepPublicMethodsCheck.setSelected(!renPub);
+            }
+            if (mr.raw().hasPath("renameVirtual")) {
+                boolean renVirt = mr.getBoolean("renameVirtual", false);
+                renameMethodsVirtualCheck.setSelected(renVirt);
+                keepVirtualMethodsCheck.setSelected(!renVirt);
+            }
+            if (mr.raw().hasPath("depth")) {
+                setClampedSpinner(methodDepthSpinner, mr.getInt("depth", 8));
+            }
+        }
+
+        if (root.hasPath("fieldRenamer")) {
+            ObfConfig.Section fr = cfg.section("fieldRenamer");
+            renameFieldsCheck.setSelected(fr.enabled());
+            if (fr.raw().hasPath("depth")) {
+                setClampedSpinner(fieldDepthSpinner, fr.getInt("depth", 8));
+            }
+            if (fr.raw().hasPath("skipAnnotatedClasses") || fr.raw().hasPath("skipAnnotatedFields")) {
+                renameFieldsSkipAnnotatedCheck.setSelected(
+                        fr.getBoolean("skipAnnotatedClasses", true) || fr.getBoolean("skipAnnotatedFields", true));
+            }
+        }
+
+        if (root.hasPath("recordMetadata")) {
+            ObfConfig.Section rm = cfg.section("recordMetadata");
+            recordMetadataCheck.setSelected(rm.enabled());
+            if (rm.raw().hasPath("eraseIdentity")) {
+                recordEraseIdentityCheck.setSelected(rm.getBoolean("eraseIdentity", true));
+            }
+            if (rm.raw().hasPath("depth")) {
+                setClampedSpinner(recordDepthSpinner, rm.getInt("depth", 8));
+            }
+        }
+
+        if (root.hasPath("resourceRenamer")) {
+            ObfConfig.Section rr = cfg.section("resourceRenamer");
+            resourceRenamerCheck.setSelected(rr.enabled());
+            if (rr.raw().hasPath("depth")) {
+                setClampedSpinner(resourceDepthSpinner, rr.getInt("depth", 8));
+            }
+            if (rr.raw().hasPath("excludeNamespaces")) {
+                resourceExcludeNsField.setText(String.join(", ", rr.getStringList("excludeNamespaces")));
+            }
+            if (rr.raw().hasPath("excludeDirectories")) {
+                resourceExcludeDirsField.setText(String.join(", ", rr.getStringList("excludeDirectories")));
+            }
+        }
+
+        if (root.hasPath("fieldPacking")) {
+            ObfConfig.Section fp = cfg.section("fieldPacking");
+            fieldPackingCheck.setSelected(fp.enabled());
+            if (fp.raw().hasPath("minFields")) {
+                setClampedSpinner(fieldPackingMinFieldsSpinner, fp.getInt("minFields", 1));
+            }
+        }
+
+        if (root.hasPath("fieldIndirection")) {
+            ObfConfig.Section fi = cfg.section("fieldIndirection");
+            fieldIndirectionCheck.setSelected(fi.enabled());
+            if (fi.raw().hasPath("percent")) {
+                setClampedSpinner(fieldIndirectionPercentSpinner, fi.getInt("percent", 30));
+            }
+        }
+
+        if (root.hasPath("referenceHiding")) {
+            ObfConfig.Section refh = cfg.section("referenceHiding");
+            refHidingCheck.setSelected(refh.enabled());
+            if (refh.raw().hasPath("hidePercent")) {
+                setClampedSpinner(refHidingPercentSpinner, refh.getInt("hidePercent", 35));
+            }
+            if (refh.raw().hasPath("inClassBootstrap")) {
+                refHidingInClassCheck.setSelected(refh.getBoolean("inClassBootstrap", false));
+            }
+            if (refh.raw().hasPath("bootstrapPoolSize")) {
+                setClampedSpinner(refHidingBootstrapPoolSpinner, refh.getInt("bootstrapPoolSize", 4));
+            }
+        }
+
+        if (root.hasPath("crossClassDispersion")) {
+            ObfConfig.Section ccd = cfg.section("crossClassDispersion");
+            crossClassDispersionCheck.setSelected(ccd.enabled());
+            if (ccd.raw().hasPath("dispersalPercent")) {
+                setClampedSpinner(dispersionPercentSpinner, ccd.getInt("dispersalPercent", 30));
+            }
+            if (ccd.raw().hasPath("sinks")) {
+                setClampedSpinner(dispersionSinksSpinner, ccd.getInt("sinks", 8));
+            }
+            if (ccd.raw().hasPath("variantsPerOpcode")) {
+                setClampedSpinner(dispersionVariantsSpinner, ccd.getInt("variantsPerOpcode", 1));
+            }
+            if (ccd.raw().hasPath("maxHelpers")) {
+                setClampedSpinner(dispersionMaxHelpersSpinner, ccd.getInt("maxHelpers", 256));
+            }
+            if (ccd.raw().hasPath("maxOperations")) {
+                setClampedSpinner(dispersionMaxOpsSpinner, ccd.getInt("maxOperations", 2048));
+            }
+        }
+
+        if (root.hasPath("semanticCore")) {
+            ObfConfig.Section sc = cfg.section("semanticCore");
+            semanticCoreCheck.setSelected(sc.enabled());
+            if (sc.raw().hasPath("percent")) {
+                setClampedSpinner(semanticCorePercentSpinner, sc.getInt("percent", 30));
+            }
+            if (sc.raw().hasPath("minOperations")) {
+                setClampedSpinner(semanticCoreMinOpsSpinner, sc.getInt("minOperations", 3));
+            }
+            if (sc.raw().hasPath("maxMethods")) {
+                setClampedSpinner(semanticCoreMaxMethodsSpinner, sc.getInt("maxMethods", 32));
+            }
+        }
+
+        if (root.hasPath("semanticFabric")) {
+            ObfConfig.Section sf = cfg.section("semanticFabric");
+            semanticFabricCheck.setSelected(sf.enabled());
+            if (sf.raw().hasPath("percent")) {
+                setClampedSpinner(semanticFabricPercentSpinner, sf.getInt("percent", 30));
+            }
+            if (sf.raw().hasPath("minArithmeticOps")) {
+                setClampedSpinner(semanticFabricMinOpsSpinner, sf.getInt("minArithmeticOps", 3));
+            }
+            if (sf.raw().hasPath("maxMethods")) {
+                setClampedSpinner(semanticFabricMaxMethodsSpinner, sf.getInt("maxMethods", 48));
+            }
+            if (sf.raw().hasPath("carriers")) {
+                setClampedSpinner(semanticFabricCarriersSpinner, sf.getInt("carriers", 6));
+            }
+        }
+
+        if (root.hasPath("methodRelocation")) {
+            ObfConfig.Section mr = cfg.section("methodRelocation");
+            methodRelocationCheck.setSelected(mr.enabled());
+            if (mr.raw().hasPath("percent")) {
+                setClampedSpinner(methodRelocPercentSpinner, mr.getInt("percent", 30));
+            }
+            if (mr.raw().hasPath("maxMethods")) {
+                setClampedSpinner(methodRelocMaxMethodsSpinner, mr.getInt("maxMethods", 48));
+            }
+            if (mr.raw().hasPath("carriers")) {
+                setClampedSpinner(methodRelocCarriersSpinner, mr.getInt("carriers", 8));
+            }
+            if (mr.raw().hasPath("minInstructions")) {
+                setClampedSpinner(methodRelocMinInsnsSpinner, mr.getInt("minInstructions", 8));
+            }
+        }
+
+        if (root.hasPath("methodExtraction")) {
+            ObfConfig.Section me = cfg.section("methodExtraction");
+            methodExtractionCheck.setSelected(me.enabled());
+            if (me.raw().hasPath("percent")) {
+                setClampedSpinner(methodExtractPercentSpinner, me.getInt("percent", 30));
+            }
+            if (me.raw().hasPath("maxMethods")) {
+                setClampedSpinner(methodExtractMaxMethodsSpinner, me.getInt("maxMethods", 64));
+            }
+            if (me.raw().hasPath("carriers")) {
+                setClampedSpinner(methodExtractCarriersSpinner, me.getInt("carriers", 8));
+            }
+            if (me.raw().hasPath("minInstructions")) {
+                setClampedSpinner(methodExtractMinInsnsSpinner, me.getInt("minInstructions", 8));
+            }
+        }
+
+        if (root.hasPath("annotationSanitizer")) {
+            ObfConfig.Section asan = cfg.section("annotationSanitizer");
+            annotationSanitizerCheck.setSelected(asan.enabled());
+            if (asan.raw().hasPath("descriptors")) {
+                annotationSanitizerDescriptorsField.setText(String.join(", ", asan.getStringList("descriptors")));
+            }
+        }
+
+        exemptMixinsCheck.setSelected(cfg.exemptMixins());
+        if (root.hasPath("defaults.exempt")) {
+            List<String> exempts = root.getStringList("defaults.exempt");
+            exemptionsArea.setText(String.join("\n", exempts));
+        }
+
+        if (root.hasPath("libs")) {
+            for (String lib : cfg.libs()) {
+                if (!libsModel.contains(lib)) {
+                    libsModel.addElement(lib);
+                }
+            }
         }
     }
 
@@ -2569,6 +3195,7 @@ public final class NullfuscatorFrame extends JFrame {
 
                 renameFieldsCheck.setSelected(true);
                 fieldDepthSpinner.setValue(5);
+                renameFieldsSkipAnnotatedCheck.setSelected(true);
 
                 stringEncCheck.setSelected(true);
                 stringEncTypeCombo.setSelectedItem("STANDARD");
@@ -2582,6 +3209,8 @@ public final class NullfuscatorFrame extends JFrame {
 
                 numberEncCheck.setSelected(false);
                 numberEncLayersSpinner.setValue(1);
+                parameterEncryptionCheck.setSelected(false);
+                parameterEncryptionProbabilitySpinner.setValue(10);
 
                 safeControlFlowCheck.setSelected(false);
                 safeControlFlowLevelSpinner.setValue(1);
@@ -2604,6 +3233,11 @@ public final class NullfuscatorFrame extends JFrame {
 
                 antiDecompilerCheck.setSelected(false);
                 antiDecompilerLevelSpinner.setValue(1);
+                antiDecompilerCyclicSigCheck.setSelected(false);
+                antiDecompilerTryCatchTrapCheck.setSelected(false);
+                antiDecompilerTrollStackTracesCheck.setSelected(false);
+                antiDecompilerStructuralHardeningCheck.setSelected(false);
+                antiDecompilerTrapPercentSpinner.setValue(0);
 
                 antiDeobfCheck.setSelected(false);
                 antiDeobfLevelSpinner.setValue(1);
@@ -2617,6 +3251,8 @@ public final class NullfuscatorFrame extends JFrame {
                 antiDebugCheck.setSelected(false);
                 antiDebugCheckPercentSpinner.setValue(10);
                 antiDebugDetectorsSpinner.setValue(2);
+                antiDebugRejectAttachCheck.setSelected(false);
+                antiDebugRejectAgentsCheck.setSelected(false);
 
                 fileCrasherCheck.setSelected(false);
                 runtimeIntegrityCheck.setSelected(false);
@@ -2683,6 +3319,7 @@ public final class NullfuscatorFrame extends JFrame {
 
                 renameFieldsCheck.setSelected(true);
                 fieldDepthSpinner.setValue(6);
+                renameFieldsSkipAnnotatedCheck.setSelected(false);
 
                 stringEncCheck.setSelected(true);
                 stringEncTypeCombo.setSelectedItem("POLYMORPHIC");
@@ -2696,6 +3333,8 @@ public final class NullfuscatorFrame extends JFrame {
 
                 numberEncCheck.setSelected(true);
                 numberEncLayersSpinner.setValue(2);
+                parameterEncryptionCheck.setSelected(false);
+                parameterEncryptionProbabilitySpinner.setValue(20);
 
                 safeControlFlowCheck.setSelected(true);
                 safeControlFlowLevelSpinner.setValue(1);
@@ -2729,6 +3368,11 @@ public final class NullfuscatorFrame extends JFrame {
 
                 antiDecompilerCheck.setSelected(false);
                 antiDecompilerLevelSpinner.setValue(1);
+                antiDecompilerCyclicSigCheck.setSelected(false);
+                antiDecompilerTryCatchTrapCheck.setSelected(false);
+                antiDecompilerTrollStackTracesCheck.setSelected(false);
+                antiDecompilerStructuralHardeningCheck.setSelected(false);
+                antiDecompilerTrapPercentSpinner.setValue(0);
 
                 antiDeobfCheck.setSelected(false);
                 antiDeobfLevelSpinner.setValue(1);
@@ -2742,6 +3386,8 @@ public final class NullfuscatorFrame extends JFrame {
                 antiDebugCheck.setSelected(false);
                 antiDebugCheckPercentSpinner.setValue(10);
                 antiDebugDetectorsSpinner.setValue(3);
+                antiDebugRejectAttachCheck.setSelected(false);
+                antiDebugRejectAgentsCheck.setSelected(false);
 
                 fileCrasherCheck.setSelected(false);
                 runtimeIntegrityCheck.setSelected(false);
@@ -2801,6 +3447,7 @@ public final class NullfuscatorFrame extends JFrame {
 
                 renameFieldsCheck.setSelected(true);
                 fieldDepthSpinner.setValue(8);
+                renameFieldsSkipAnnotatedCheck.setSelected(false);
 
                 stringEncCheck.setSelected(true);
                 stringEncTypeCombo.setSelectedItem("POLYMORPHIC");
@@ -2814,15 +3461,17 @@ public final class NullfuscatorFrame extends JFrame {
 
                 numberEncCheck.setSelected(true);
                 numberEncLayersSpinner.setValue(3);
+                parameterEncryptionCheck.setSelected(true);
+                parameterEncryptionProbabilitySpinner.setValue(40);
 
-                safeControlFlowCheck.setSelected(false);
+                safeControlFlowCheck.setSelected(true);
                 safeControlFlowLevelSpinner.setValue(2);
 
                 flowFlattenCheck.setSelected(true);
-                flowFlattenPercentSpinner.setValue(25);
-                flowFlattenAllowRefLocalsCheck.setSelected(false);
+                flowFlattenPercentSpinner.setValue(70);
+                flowFlattenAllowRefLocalsCheck.setSelected(true);
 
-                mangledJumpCheck.setSelected(false);
+                mangledJumpCheck.setSelected(true);
                 flowSwitchCheck.setSelected(false);
                 integerReturnCheck.setSelected(false);
 
@@ -2837,6 +3486,11 @@ public final class NullfuscatorFrame extends JFrame {
 
                 antiDecompilerCheck.setSelected(true);
                 antiDecompilerLevelSpinner.setValue(3);
+                antiDecompilerCyclicSigCheck.setSelected(true);
+                antiDecompilerTryCatchTrapCheck.setSelected(true);
+                antiDecompilerTrollStackTracesCheck.setSelected(true);
+                antiDecompilerStructuralHardeningCheck.setSelected(true);
+                antiDecompilerTrapPercentSpinner.setValue(80);
 
                 antiDeobfCheck.setSelected(true);
                 antiDeobfLevelSpinner.setValue(3);
@@ -2850,13 +3504,16 @@ public final class NullfuscatorFrame extends JFrame {
                 antiDebugCheck.setSelected(true);
                 antiDebugCheckPercentSpinner.setValue(10);
                 antiDebugDetectorsSpinner.setValue(3);
+                antiDebugRejectAttachCheck.setSelected(false);
+                antiDebugRejectAgentsCheck.setSelected(false);
 
                 fileCrasherCheck.setSelected(true);
                 runtimeIntegrityCheck.setSelected(false);
 
                 refHidingCheck.setSelected(true);
+                refHidingInClassCheck.setSelected(true);
                 refHidingPercentSpinner.setValue(35);
-                refHidingBootstrapPoolSpinner.setValue(8);
+                refHidingBootstrapPoolSpinner.setValue(0);
 
                 fieldIndirectionCheck.setSelected(true);
                 fieldIndirectionPercentSpinner.setValue(30);
@@ -2886,7 +3543,7 @@ public final class NullfuscatorFrame extends JFrame {
                 methodRelocPercentSpinner.setValue(30);
                 methodRelocMaxMethodsSpinner.setValue(48);
                 methodRelocCarriersSpinner.setValue(8);
-                methodRelocMinInsnsSpinner.setValue(20);
+                methodRelocMinInsnsSpinner.setValue(8);
 
                 methodExtractionCheck.setSelected(true);
                 methodExtractPercentSpinner.setValue(30);
@@ -2931,6 +3588,7 @@ public final class NullfuscatorFrame extends JFrame {
 
                 renameFieldsCheck.setSelected(true);
                 fieldDepthSpinner.setValue(8);
+                renameFieldsSkipAnnotatedCheck.setSelected(false);
 
                 stringEncCheck.setSelected(true);
                 stringEncTypeCombo.setSelectedItem("POLYMORPHIC");
@@ -2944,15 +3602,17 @@ public final class NullfuscatorFrame extends JFrame {
 
                 numberEncCheck.setSelected(true);
                 numberEncLayersSpinner.setValue(5);
+                parameterEncryptionCheck.setSelected(true);
+                parameterEncryptionProbabilitySpinner.setValue(70);
 
-                safeControlFlowCheck.setSelected(false);
+                safeControlFlowCheck.setSelected(true);
                 safeControlFlowLevelSpinner.setValue(3);
 
                 flowFlattenCheck.setSelected(true);
                 flowFlattenPercentSpinner.setValue(100);
-                flowFlattenAllowRefLocalsCheck.setSelected(false);
+                flowFlattenAllowRefLocalsCheck.setSelected(true);
 
-                mangledJumpCheck.setSelected(false);
+                mangledJumpCheck.setSelected(true);
                 flowSwitchCheck.setSelected(true);
                 integerReturnCheck.setSelected(true);
 
@@ -2967,6 +3627,11 @@ public final class NullfuscatorFrame extends JFrame {
 
                 antiDecompilerCheck.setSelected(true);
                 antiDecompilerLevelSpinner.setValue(3);
+                antiDecompilerCyclicSigCheck.setSelected(true);
+                antiDecompilerTryCatchTrapCheck.setSelected(true);
+                antiDecompilerTrollStackTracesCheck.setSelected(true);
+                antiDecompilerStructuralHardeningCheck.setSelected(true);
+                antiDecompilerTrapPercentSpinner.setValue(100);
 
                 antiDeobfCheck.setSelected(true);
                 antiDeobfLevelSpinner.setValue(3);
@@ -2980,13 +3645,16 @@ public final class NullfuscatorFrame extends JFrame {
                 antiDebugCheck.setSelected(true);
                 antiDebugCheckPercentSpinner.setValue(50);
                 antiDebugDetectorsSpinner.setValue(6);
+                antiDebugRejectAttachCheck.setSelected(false);
+                antiDebugRejectAgentsCheck.setSelected(true);
 
                 fileCrasherCheck.setSelected(true);
                 runtimeIntegrityCheck.setSelected(false);
 
                 refHidingCheck.setSelected(true);
+                refHidingInClassCheck.setSelected(true);
                 refHidingPercentSpinner.setValue(100);
-                refHidingBootstrapPoolSpinner.setValue(8);
+                refHidingBootstrapPoolSpinner.setValue(0);
 
                 fieldIndirectionCheck.setSelected(true);
                 fieldIndirectionPercentSpinner.setValue(100);
@@ -3014,9 +3682,9 @@ public final class NullfuscatorFrame extends JFrame {
 
                 methodRelocationCheck.setSelected(true);
                 methodRelocPercentSpinner.setValue(85);
-                methodRelocMaxMethodsSpinner.setValue(128);
+                methodRelocMaxMethodsSpinner.setValue(256);
                 methodRelocCarriersSpinner.setValue(16);
-                methodRelocMinInsnsSpinner.setValue(20);
+                methodRelocMinInsnsSpinner.setValue(8);
 
                 methodExtractionCheck.setSelected(true);
                 methodExtractPercentSpinner.setValue(100);
@@ -3279,6 +3947,11 @@ public final class NullfuscatorFrame extends JFrame {
         sb.append("  layers: ").append(numberEncLayersSpinner.getValue()).append("\n");
         sb.append("}\n\n");
 
+        sb.append("parameterEncryption {\n");
+        sb.append("  enabled: ").append(parameterEncryptionCheck.isSelected()).append("\n");
+        sb.append("  probability: ").append(parameterEncryptionProbabilitySpinner.getValue()).append("\n");
+        sb.append("}\n\n");
+
         sb.append("safeControlFlow {\n");
         sb.append("  enabled: ").append(safeControlFlowCheck.isSelected()).append("\n");
         sb.append("  level: ").append(safeControlFlowLevelSpinner.getValue()).append("\n");
@@ -3310,6 +3983,12 @@ public final class NullfuscatorFrame extends JFrame {
         sb.append("antiDecompiler {\n");
         sb.append("  enabled: ").append(antiDecompilerCheck.isSelected()).append("\n");
         sb.append("  level: ").append(antiDecompilerLevelSpinner.getValue()).append("\n");
+        sb.append("  cyclicSignatures: ").append(antiDecompilerCyclicSigCheck.isSelected()).append("\n");
+        sb.append("  tryCatchTraps: ").append(antiDecompilerTryCatchTrapCheck.isSelected()).append("\n");
+        sb.append("  trapPercent: ").append(antiDecompilerTrapPercentSpinner.getValue()).append("\n");
+        sb.append("  trollStackTraces: ").append(antiDecompilerTrollStackTracesCheck.isSelected()).append("\n");
+        sb.append("  structuralHardening: ").append(antiDecompilerStructuralHardeningCheck.isSelected()).append("\n");
+        sb.append("  skipAnnotatedClasses: false\n");
         sb.append("}\n\n");
 
         sb.append("antiDeobf {\n");
@@ -3321,12 +4000,15 @@ public final class NullfuscatorFrame extends JFrame {
         sb.append("  poisonInnerClasses: ").append(antiDeobfPoisonInnerCheck.isSelected()).append("\n");
         sb.append("  trapRealMethods: ").append(antiDeobfTrapRealCheck.isSelected()).append("\n");
         sb.append("  honeypotEvaluators: ").append(antiDeobfHoneypotsCheck.isSelected()).append("\n");
+        sb.append("  skipAnnotatedClasses: false\n");
         sb.append("}\n\n");
 
         sb.append("antiDebug {\n");
         sb.append("  enabled: ").append(antiDebugCheck.isSelected()).append("\n");
         sb.append("  checkPercent: ").append(antiDebugCheckPercentSpinner.getValue()).append("\n");
         sb.append("  detectors: ").append(antiDebugDetectorsSpinner.getValue()).append("\n");
+        sb.append("  rejectAttach: ").append(antiDebugRejectAttachCheck.isSelected()).append("\n");
+        sb.append("  rejectAgents: ").append(antiDebugRejectAgentsCheck.isSelected()).append("\n");
         sb.append("}\n\n");
 
         sb.append("fileCrasher.enabled = ").append(fileCrasherCheck.isSelected()).append("\n");
@@ -3360,6 +4042,8 @@ public final class NullfuscatorFrame extends JFrame {
         sb.append("fieldRenamer {\n");
         sb.append("  enabled: ").append(renameFieldsCheck.isSelected()).append("\n");
         sb.append("  depth: ").append(fieldDepthSpinner.getValue()).append("\n");
+        sb.append("  skipAnnotatedClasses: ").append(renameFieldsSkipAnnotatedCheck.isSelected()).append("\n");
+        sb.append("  skipAnnotatedFields: ").append(renameFieldsSkipAnnotatedCheck.isSelected()).append("\n");
         sb.append("}\n\n");
 
         sb.append("recordMetadata {\n");
@@ -3394,7 +4078,8 @@ public final class NullfuscatorFrame extends JFrame {
         sb.append("referenceHiding {\n");
         sb.append("  enabled: ").append(refHidingCheck.isSelected()).append("\n");
         sb.append("  hidePercent: ").append(refHidingPercentSpinner.getValue()).append("\n");
-        sb.append("  bootstrapPoolSize: ").append(refHidingBootstrapPoolSpinner.getValue()).append("\n");
+        sb.append("  inClassBootstrap: ").append(refHidingInClassCheck.isSelected()).append("\n");
+        sb.append("  bootstrapPoolSize: ").append(refHidingInClassCheck.isSelected() ? 0 : refHidingBootstrapPoolSpinner.getValue()).append("\n");
         sb.append("}\n\n");
 
         sb.append("crossClassDispersion {\n");
@@ -3839,10 +4524,18 @@ public final class NullfuscatorFrame extends JFrame {
                     Object data = dtde.getTransferable().getTransferData(DataFlavor.javaFileListFlavor);
                     if (data instanceof List<?> list && !list.isEmpty()) {
                         for (Object item : list) {
-                            if (item instanceof File f && f.isFile() && f.getName().toLowerCase().endsWith(".jar")) {
-                                handleSelectedInputJar(f);
-                                dtde.dropComplete(true);
-                                return;
+                            if (item instanceof File f && f.isFile()) {
+                                String name = f.getName().toLowerCase();
+                                if (name.endsWith(".jar")) {
+                                    handleSelectedInputJar(f);
+                                    dtde.dropComplete(true);
+                                    return;
+                                } else if (name.endsWith(".hocon")) {
+                                    customConfigField.setText(f.getAbsolutePath());
+                                    loadCustomHoconToGui(f);
+                                    dtde.dropComplete(true);
+                                    return;
+                                }
                             }
                         }
                     }
@@ -3905,6 +4598,11 @@ public final class NullfuscatorFrame extends JFrame {
 
             prefs.putBoolean("anti_decomp_enabled", antiDecompilerCheck.isSelected());
             putSpinner("anti_decomp_level", antiDecompilerLevelSpinner);
+            prefs.putBoolean("anti_decomp_cyclic_sig", antiDecompilerCyclicSigCheck.isSelected());
+            prefs.putBoolean("anti_decomp_try_catch_trap", antiDecompilerTryCatchTrapCheck.isSelected());
+            prefs.putBoolean("anti_decomp_troll_trace", antiDecompilerTrollStackTracesCheck.isSelected());
+            prefs.putBoolean("anti_decomp_structural_hardening", antiDecompilerStructuralHardeningCheck.isSelected());
+            putSpinner("anti_decomp_trap_pct", antiDecompilerTrapPercentSpinner);
 
             prefs.putBoolean("anti_deobf_enabled", antiDeobfCheck.isSelected());
             putSpinner("anti_deobf_level", antiDeobfLevelSpinner);
@@ -3918,6 +4616,8 @@ public final class NullfuscatorFrame extends JFrame {
             prefs.putBoolean("anti_debug_enabled", antiDebugCheck.isSelected());
             putSpinner("anti_debug_pct", antiDebugCheckPercentSpinner);
             putSpinner("anti_debug_detectors", antiDebugDetectorsSpinner);
+            prefs.putBoolean("anti_debug_reject_attach", antiDebugRejectAttachCheck.isSelected());
+            prefs.putBoolean("anti_debug_reject_agents", antiDebugRejectAgentsCheck.isSelected());
 
             prefs.putBoolean("file_crasher_enabled", fileCrasherCheck.isSelected());
             prefs.putBoolean("runtime_integrity_enabled", runtimeIntegrityCheck.isSelected());
@@ -3942,7 +4642,11 @@ public final class NullfuscatorFrame extends JFrame {
             prefs.putBoolean("num_enc_enabled", numberEncCheck.isSelected());
             putSpinner("num_enc_layers", numberEncLayersSpinner);
 
+            prefs.putBoolean("param_enc_enabled", parameterEncryptionCheck.isSelected());
+            putSpinner("param_enc_prob", parameterEncryptionProbabilitySpinner);
+
             prefs.putBoolean("ref_hiding_enabled", refHidingCheck.isSelected());
+            prefs.putBoolean("ref_hiding_in_class", refHidingInClassCheck.isSelected());
             putSpinner("ref_hiding_pct", refHidingPercentSpinner);
             putSpinner("ref_hiding_pool", refHidingBootstrapPoolSpinner);
 
@@ -3994,6 +4698,7 @@ public final class NullfuscatorFrame extends JFrame {
 
             prefs.putBoolean("rename_fld_enabled", renameFieldsCheck.isSelected());
             putSpinner("rename_fld_depth", fieldDepthSpinner);
+            prefs.putBoolean("rename_fld_skip_annotated", renameFieldsSkipAnnotatedCheck.isSelected());
 
             prefs.put("naming_alphabet", namingAlphabetField.getText());
 
@@ -4092,6 +4797,11 @@ public final class NullfuscatorFrame extends JFrame {
 
             antiDecompilerCheck.setSelected(prefs.getBoolean("anti_decomp_enabled", antiDecompilerCheck.isSelected()));
             getSpinner("anti_decomp_level", antiDecompilerLevelSpinner);
+            antiDecompilerCyclicSigCheck.setSelected(prefs.getBoolean("anti_decomp_cyclic_sig", antiDecompilerCyclicSigCheck.isSelected()));
+            antiDecompilerTryCatchTrapCheck.setSelected(prefs.getBoolean("anti_decomp_try_catch_trap", antiDecompilerTryCatchTrapCheck.isSelected()));
+            antiDecompilerTrollStackTracesCheck.setSelected(prefs.getBoolean("anti_decomp_troll_trace", antiDecompilerTrollStackTracesCheck.isSelected()));
+            antiDecompilerStructuralHardeningCheck.setSelected(prefs.getBoolean("anti_decomp_structural_hardening", antiDecompilerStructuralHardeningCheck.isSelected()));
+            getSpinner("anti_decomp_trap_pct", antiDecompilerTrapPercentSpinner);
 
             antiDeobfCheck.setSelected(prefs.getBoolean("anti_deobf_enabled", antiDeobfCheck.isSelected()));
             getSpinner("anti_deobf_level", antiDeobfLevelSpinner);
@@ -4105,6 +4815,8 @@ public final class NullfuscatorFrame extends JFrame {
             antiDebugCheck.setSelected(prefs.getBoolean("anti_debug_enabled", antiDebugCheck.isSelected()));
             getSpinner("anti_debug_pct", antiDebugCheckPercentSpinner);
             getSpinner("anti_debug_detectors", antiDebugDetectorsSpinner);
+            antiDebugRejectAttachCheck.setSelected(prefs.getBoolean("anti_debug_reject_attach", antiDebugRejectAttachCheck.isSelected()));
+            antiDebugRejectAgentsCheck.setSelected(prefs.getBoolean("anti_debug_reject_agents", antiDebugRejectAgentsCheck.isSelected()));
 
             fileCrasherCheck.setSelected(prefs.getBoolean("file_crasher_enabled", fileCrasherCheck.isSelected()));
             runtimeIntegrityCheck.setSelected(prefs.getBoolean("runtime_integrity_enabled", runtimeIntegrityCheck.isSelected()));
@@ -4130,7 +4842,11 @@ public final class NullfuscatorFrame extends JFrame {
             numberEncCheck.setSelected(prefs.getBoolean("num_enc_enabled", numberEncCheck.isSelected()));
             getSpinner("num_enc_layers", numberEncLayersSpinner);
 
+            parameterEncryptionCheck.setSelected(prefs.getBoolean("param_enc_enabled", parameterEncryptionCheck.isSelected()));
+            getSpinner("param_enc_prob", parameterEncryptionProbabilitySpinner);
+
             refHidingCheck.setSelected(prefs.getBoolean("ref_hiding_enabled", refHidingCheck.isSelected()));
+            refHidingInClassCheck.setSelected(prefs.getBoolean("ref_hiding_in_class", refHidingInClassCheck.isSelected()));
             getSpinner("ref_hiding_pct", refHidingPercentSpinner);
             getSpinner("ref_hiding_pool", refHidingBootstrapPoolSpinner);
 
@@ -4182,6 +4898,7 @@ public final class NullfuscatorFrame extends JFrame {
 
             renameFieldsCheck.setSelected(prefs.getBoolean("rename_fld_enabled", renameFieldsCheck.isSelected()));
             getSpinner("rename_fld_depth", fieldDepthSpinner);
+            renameFieldsSkipAnnotatedCheck.setSelected(prefs.getBoolean("rename_fld_skip_annotated", renameFieldsSkipAnnotatedCheck.isSelected()));
 
             namingAlphabetField.setText(prefs.get("naming_alphabet", namingAlphabetField.getText()));
 

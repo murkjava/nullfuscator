@@ -43,6 +43,7 @@ public final class JarIO {
                         ClassNode cn = new ClassNode();
                         cr.accept(cn, ClassReader.EXPAND_FRAMES);
                         ctx.putClass(cn);
+                        ctx.names().reserve(cn.name);
                     } catch (RuntimeException ex) {
 
                         ctx.resources().put(name, data);
@@ -60,7 +61,7 @@ public final class JarIO {
         Path parent = target.getParent();
         if (parent == null) parent = Path.of(".").toAbsolutePath();
         Files.createDirectories(parent);
-        Path staged = Files.createTempFile(parent, ".nullfuscator-obf-", ".jar.tmp");
+        Path staged = Files.createTempFile(parent, ".obf-staged-", ".jar.tmp");
         boolean installed = false;
         try {
             writeArchive(staged, ctx);
