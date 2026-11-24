@@ -66,13 +66,23 @@ public final class AntiDecompilerRegression implements Opcodes {
         check(cn.attrs != null && !cn.attrs.isEmpty(), "Structural hardening attributes must be present on class");
 
         boolean hasTableSwitch = false;
+        boolean hasLdcHandle = false;
+        boolean hasClashArray = false;
         for (AbstractInsnNode insn : work.instructions.toArray()) {
             if (insn instanceof TableSwitchInsnNode) {
                 hasTableSwitch = true;
-                break;
+            }
+            if (insn instanceof LdcInsnNode ldc && ldc.cst instanceof org.objectweb.asm.Handle) {
+                hasLdcHandle = true;
+            }
+            if (insn instanceof IntInsnNode intInsn && intInsn.getOpcode() == NEWARRAY) {
+                hasClashArray = true;
             }
         }
         check(hasTableSwitch, "CFR switch contiguity trap must be injected");
+        check(hasLdcHandle, "LDC MethodHandle trap must be injected");
+        check(hasClashArray, "Type clash trap must be injected");
+        check(cn.methods.size() > 3, "Overloaded return type methods must be injected");
 
         ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_FRAMES | ClassWriter.COMPUTE_MAXS);
         cn.accept(cw);

@@ -93,7 +93,7 @@ public final class MethodExtractionTransformer implements Transformer {
                 String newDesc = (mn.access & Opcodes.ACC_STATIC) != 0
                         ? oldDesc
                         : prependReceiver(owner.name, oldDesc);
-                String fresh = "x" + ctx.names().nextRandom(rnd, 8 + rnd.nextInt(9));
+                String fresh = ctx.names().nextRandom(rnd, 8 + rnd.nextInt(9));
 
                 moved.put(key(owner.name, oldName, oldDesc),
                         new Destination(carrier.name, fresh, newDesc));

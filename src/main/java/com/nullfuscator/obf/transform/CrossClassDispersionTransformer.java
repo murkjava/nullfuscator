@@ -144,7 +144,7 @@ public final class CrossClassDispersionTransformer implements Transformer {
                         }
 
                         ClassNode sink = sinks.get(sinkIndex);
-                        String name = "d" + ctx.names().next();
+                        String name = ctx.names().next();
                         sink.methods.add(compositeHelper(sink.name, name, shape[1], insn.getOpcode(), rnd, opaqueState));
                         helper = new Helper(sink.name, name);
                         family.add(helper);

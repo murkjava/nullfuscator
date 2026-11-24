@@ -219,7 +219,11 @@ public final class Main {
         String inputHash = reportOnly || noMapping ? null : ArtifactDigest.sha256(input);
         long theSeed = (seed != null) ? seed : new SecureRandom().nextLong();
 
-        NameGenerator names = new NameGenerator(new String[] { "I", "l", "1", "lI", "Il", "ll" });
+        List<String> namingAlphabet = cfg.namingAlphabet();
+        String[] tokens = namingAlphabet.isEmpty()
+                ? new String[] { "I", "l", "1", "lI", "Il", "ll" }
+                : namingAlphabet.toArray(new String[0]);
+        NameGenerator names = new NameGenerator(tokens);
         ObfContext ctx = new ObfContext(cfg, theSeed, log, names);
         boolean needsReport = reportFile != null || reportOnly
                 || cfg.section("budgets").present() || cfg.section("coverage").present();
@@ -432,7 +436,11 @@ public final class Main {
                 : (preset != null ? ObfConfig.loadPreset(preset) : ObfConfig.empty());
         cfg = cfg.withAdditionalLibs(libs);
 
-        ObfContext ctx = new ObfContext(cfg, 0L, log, new NameGenerator(new String[] { "I", "l" }));
+        List<String> checkAlphabet = cfg.namingAlphabet();
+        String[] checkTokens = checkAlphabet.isEmpty()
+                ? new String[] { "I", "l" }
+                : checkAlphabet.toArray(new String[0]);
+        ObfContext ctx = new ObfContext(cfg, 0L, log, new NameGenerator(checkTokens));
         RunReport report = new RunReport(0L, input.length());
         ctx.report(report);
 

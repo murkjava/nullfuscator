@@ -80,7 +80,7 @@ public final class FieldPackingTransformer implements Transformer {
                 continue;
             }
 
-            String state = "$" + ctx.names().nextRandom(ctx.random(), 9 + ctx.random().nextInt(8));
+            String state = ctx.names().nextRandom(ctx.random(), 9 + ctx.random().nextInt(8));
             int index = 0;
             for (FieldNode fn : fields) {
                 slots.put(key(cn.name, fn.name, fn.desc),

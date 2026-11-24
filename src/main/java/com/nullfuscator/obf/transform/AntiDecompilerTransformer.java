@@ -5,7 +5,9 @@ import com.nullfuscator.obf.core.Transformer;
 import org.objectweb.asm.Attribute;
 import org.objectweb.asm.ByteVector;
 import org.objectweb.asm.ClassWriter;
+import org.objectweb.asm.Handle;
 import org.objectweb.asm.Opcodes;
+import org.objectweb.asm.Type;
 import org.objectweb.asm.tree.*;
 
 import java.util.ArrayList;
@@ -58,6 +60,11 @@ public final class AntiDecompilerTransformer implements Transformer {
         boolean trollStackTraces = section.getBoolean("trollStackTraces", level >= 2);
         boolean structuralHardening = section.getBoolean("structuralHardening", level >= 2);
         boolean cfrSwitchTraps = section.getBoolean("cfrSwitchTraps", level >= 2);
+        boolean ldcTraps = section.getBoolean("ldcTraps", level >= 2);
+        boolean irreducibleLoops = section.getBoolean("irreducibleLoops", level >= 2);
+        boolean typeClashTraps = section.getBoolean("typeClashTraps", level >= 2);
+        boolean crossLinkedTryCatch = section.getBoolean("crossLinkedTryCatch", level >= 2);
+        boolean overloadReturn = section.getBoolean("overloadReturn", level >= 2);
         String trollMessage = section.getString("trollMessage", "  /\\_/\\\n ( o.o )  Stack trace unavailable\n  > ^ <");
         int trapPercent = clamp(section.getInt("trapPercent", 80), 0, 100);
         int cyclicDepth = clamp(section.getInt("cyclicDepth", 48), 8, 128);
@@ -71,6 +78,10 @@ public final class AntiDecompilerTransformer implements Transformer {
         int cyclicCount = 0;
         int trapCount = 0;
         int cfrSwitchTrapCount = 0;
+        int ldcTrapCount = 0;
+        int irreducibleLoopCount = 0;
+        int typeClashCount = 0;
+        int crossLinkedCount = 0;
         int trollCount = 0;
         int structuralCount = 0;
 
@@ -97,34 +108,25 @@ public final class AntiDecompilerTransformer implements Transformer {
                 cyclicCount++;
             }
 
-            if (tryCatchTraps) {
+            if (tryCatchTraps || cfrSwitchTraps || ldcTraps || irreducibleLoops || typeClashTraps || crossLinkedTryCatch) {
                 for (MethodNode mn : cn.methods) {
-                    if (mn.name.startsWith("<")
-                            || (mn.access & (Opcodes.ACC_ABSTRACT | Opcodes.ACC_NATIVE)) != 0
-                            || mn.instructions == null
-                            || mn.instructions.size() < 4
-                            || ctx.isHotPath(cn, mn)) {
-                        continue;
-                    }
-                    if (rnd.nextInt(100) < trapPercent) {
-                        injectDecompilerTrap(mn);
-                        trapCount++;
-                    }
-                }
-            }
+                    if (isEligibleTrapTarget(cn, mn, ctx)) {
+                        boolean doTryCatch = tryCatchTraps && rnd.nextInt(100) < trapPercent;
+                        boolean doCfrSwitch = cfrSwitchTraps && rnd.nextInt(100) < trapPercent;
+                        boolean doLdc = ldcTraps && rnd.nextInt(100) < trapPercent;
+                        boolean doIrreducible = irreducibleLoops && rnd.nextInt(100) < trapPercent;
+                        boolean doTypeClash = typeClashTraps && rnd.nextInt(100) < trapPercent;
+                        boolean doCrossLinked = crossLinkedTryCatch && rnd.nextInt(100) < trapPercent;
 
-            if (cfrSwitchTraps) {
-                for (MethodNode mn : cn.methods) {
-                    if (mn.name.startsWith("<")
-                            || (mn.access & (Opcodes.ACC_ABSTRACT | Opcodes.ACC_NATIVE)) != 0
-                            || mn.instructions == null
-                            || mn.instructions.size() < 4
-                            || ctx.isHotPath(cn, mn)) {
-                        continue;
-                    }
-                    if (rnd.nextInt(100) < trapPercent) {
-                        injectCfrSwitchTrap(mn, rnd);
-                        cfrSwitchTrapCount++;
+                        if (doTryCatch || doCfrSwitch || doLdc || doIrreducible || doTypeClash || doCrossLinked) {
+                            injectCombinedTraps(mn, doTryCatch, doCfrSwitch, doLdc, doIrreducible, doTypeClash, doCrossLinked, rnd);
+                            if (doTryCatch) trapCount++;
+                            if (doCfrSwitch) cfrSwitchTrapCount++;
+                            if (doLdc) ldcTrapCount++;
+                            if (doIrreducible) irreducibleLoopCount++;
+                            if (doTypeClash) typeClashCount++;
+                            if (doCrossLinked) crossLinkedCount++;
+                        }
                     }
                 }
             }
@@ -143,7 +145,7 @@ public final class AntiDecompilerTransformer implements Transformer {
             }
 
             fieldPoison += addFieldCollisions(cn, level, rnd, ctx);
-            if (level >= 2) {
+            if (overloadReturn) {
                 methodPoison += addReturnTypeCollisions(cn, level, rnd);
             }
             if (level >= 3) {
@@ -159,6 +161,10 @@ public final class AntiDecompilerTransformer implements Transformer {
                 + " cyclicSigs=" + cyclicCount
                 + " traps=" + trapCount
                 + " cfrSwitchTraps=" + cfrSwitchTrapCount
+                + " ldcTraps=" + ldcTrapCount
+                + " irreducibleLoops=" + irreducibleLoopCount
+                + " typeClash=" + typeClashCount
+                + " crossLinked=" + crossLinkedCount
                 + " trollTraces=" + trollCount
                 + " structuralHardening=" + structuralCount
                 + " (level=" + level + ")");
@@ -195,82 +201,12 @@ public final class AntiDecompilerTransformer implements Transformer {
         return sb.toString();
     }
 
-    private static void injectDecompilerTrap(MethodNode method) {
-        LabelNode handler = new LabelNode();
-        LabelNode outerStart = new LabelNode();
-        LabelNode innerStart = new LabelNode();
-        LabelNode innerEnd = new LabelNode();
-        LabelNode outerEnd = new LabelNode();
-        LabelNode resume = new LabelNode();
-
-        if (method.tryCatchBlocks == null) {
-            method.tryCatchBlocks = new ArrayList<>();
-        }
-        method.tryCatchBlocks.add(new TryCatchBlockNode(
-                outerStart, outerEnd, handler, "java/lang/Throwable"));
-        method.tryCatchBlocks.add(new TryCatchBlockNode(
-                innerStart, innerEnd, handler, null));
-
-        InsnList trap = new InsnList();
-        trap.add(new InsnNode(Opcodes.ICONST_0));
-        trap.add(new JumpInsnNode(Opcodes.IFNE, outerStart));
-        trap.add(new JumpInsnNode(Opcodes.GOTO, resume));
-        trap.add(outerStart);
-        trap.add(innerStart);
-        trap.add(new InsnNode(Opcodes.ACONST_NULL));
-        trap.add(new InsnNode(Opcodes.ATHROW));
-        trap.add(innerEnd);
-        trap.add(outerEnd);
-        trap.add(handler);
-        trap.add(new InsnNode(Opcodes.POP));
-        trap.add(new JumpInsnNode(Opcodes.GOTO, resume));
-        trap.add(resume);
-
-        method.instructions.insert(trap);
-        if (method.maxStack < 1) {
-            method.maxStack = 1;
-        }
-    }
-
-    private static void injectCfrSwitchTrap(MethodNode method, Random rnd) {
-        LabelNode lReal = new LabelNode();
-        LabelNode lTrap = new LabelNode();
-        LabelNode lSw1 = new LabelNode();
-        LabelNode lSw2 = new LabelNode();
-        LabelNode lCase1_0 = new LabelNode();
-        LabelNode lCase1_1 = new LabelNode();
-        LabelNode lCase2_0 = new LabelNode();
-        LabelNode lCase2_1 = new LabelNode();
-
-        InsnList trap = new InsnList();
-
-        trap.add(new MethodInsnNode(Opcodes.INVOKESTATIC, "java/lang/System", "currentTimeMillis", "()J", false));
-        trap.add(new InsnNode(Opcodes.LCONST_0));
-        trap.add(new InsnNode(Opcodes.LCMP));
-        trap.add(new JumpInsnNode(Opcodes.IFGE, lReal));
-
-        trap.add(lTrap);
-
-        trap.add(lSw1);
-        trap.add(new InsnNode(Opcodes.ICONST_0));
-        trap.add(new TableSwitchInsnNode(0, 1, lCase1_0, lSw2, lCase1_1));
-
-        addThrowBlock(trap, lCase1_0, pickCfrException(rnd));
-
-        trap.add(lSw2);
-        trap.add(new InsnNode(Opcodes.ICONST_0));
-        trap.add(new TableSwitchInsnNode(0, 1, lCase2_0, lCase1_1, lCase2_1));
-
-        addThrowBlock(trap, lCase2_0, pickCfrException(rnd));
-        addThrowBlock(trap, lCase1_1, pickCfrException(rnd));
-        addThrowBlock(trap, lCase2_1, pickCfrException(rnd));
-
-        trap.add(lReal);
-
-        method.instructions.insert(trap);
-        if (method.maxStack < 4) {
-            method.maxStack = 4;
-        }
+    private static boolean isEligibleTrapTarget(ClassNode cn, MethodNode mn, ObfContext ctx) {
+        return !mn.name.startsWith("<")
+                && (mn.access & (Opcodes.ACC_ABSTRACT | Opcodes.ACC_NATIVE)) == 0
+                && mn.instructions != null
+                && mn.instructions.size() >= 4
+                && !ctx.isHotPath(cn, mn);
     }
 
     private static void addThrowBlock(InsnList il, LabelNode lbl, String exType) {
@@ -283,6 +219,225 @@ public final class AntiDecompilerTransformer implements Transformer {
 
     private static String pickCfrException(Random rnd) {
         return CFR_TRAP_EXCEPTIONS[rnd.nextInt(CFR_TRAP_EXCEPTIONS.length)];
+    }
+
+    private static void emitPolymorphicGuard(InsnList il, LabelNode lReal, Random rnd) {
+        int variant = rnd.nextInt(4);
+        il.add(new MethodInsnNode(Opcodes.INVOKESTATIC, "java/lang/System", "currentTimeMillis", "()J", false));
+        switch (variant) {
+            case 0 -> {
+                il.add(new LdcInsnNode(1000000000000L));
+                il.add(new InsnNode(Opcodes.LCMP));
+                il.add(new JumpInsnNode(Opcodes.IFGT, lReal));
+            }
+            case 1 -> {
+                il.add(new InsnNode(Opcodes.LCONST_0));
+                il.add(new InsnNode(Opcodes.LCMP));
+                il.add(new JumpInsnNode(Opcodes.IFNE, lReal));
+            }
+            case 2 -> {
+                il.add(new LdcInsnNode(500000000000L));
+                il.add(new InsnNode(Opcodes.LCMP));
+                il.add(new JumpInsnNode(Opcodes.IFGT, lReal));
+            }
+            default -> {
+                il.add(new InsnNode(Opcodes.LCONST_0));
+                il.add(new InsnNode(Opcodes.LCMP));
+                il.add(new JumpInsnNode(Opcodes.IFGE, lReal));
+            }
+        }
+    }
+
+    private static void injectCombinedTraps(MethodNode method,
+                                            boolean doTryCatch,
+                                            boolean doCfrSwitch,
+                                            boolean doLdc,
+                                            boolean doIrreducible,
+                                            boolean doTypeClash,
+                                            boolean doCrossLinked,
+                                            Random rnd) {
+        LabelNode lReal = new LabelNode();
+        InsnList trap = new InsnList();
+
+        emitPolymorphicGuard(trap, lReal, rnd);
+
+        if (doLdc) {
+            Type mt = Type.getMethodType("(Ljava/lang/String;I)Ljava/util/List;");
+            trap.add(new LdcInsnNode(mt));
+            trap.add(new InsnNode(Opcodes.POP));
+
+            Handle mhStatic = new Handle(Opcodes.H_INVOKESTATIC, "java/lang/Math", "max", "(II)I", false);
+            trap.add(new LdcInsnNode(mhStatic));
+            trap.add(new InsnNode(Opcodes.POP));
+
+            Handle mhVirtual = new Handle(Opcodes.H_INVOKEVIRTUAL, "java/lang/String", "length", "()I", false);
+            trap.add(new LdcInsnNode(mhVirtual));
+            trap.add(new InsnNode(Opcodes.POP));
+        }
+
+        if (doTypeClash) {
+            LabelNode lBranch1 = new LabelNode();
+            LabelNode lBranch2 = new LabelNode();
+            LabelNode lMerge = new LabelNode();
+
+            int slot = method.maxLocals;
+            method.maxLocals = slot + 2;
+
+            trap.add(new MethodInsnNode(Opcodes.INVOKESTATIC, "java/lang/System", "currentTimeMillis", "()J", false));
+            trap.add(new InsnNode(Opcodes.L2I));
+            trap.add(new JumpInsnNode(Opcodes.IFEQ, lBranch1));
+
+            trap.add(lBranch2);
+            trap.add(new IntInsnNode(Opcodes.BIPUSH, 5));
+            trap.add(new IntInsnNode(Opcodes.NEWARRAY, Opcodes.T_INT));
+            trap.add(new VarInsnNode(Opcodes.ASTORE, slot));
+            trap.add(new JumpInsnNode(Opcodes.GOTO, lMerge));
+
+            trap.add(lBranch1);
+            trap.add(new LdcInsnNode(""));
+            trap.add(new VarInsnNode(Opcodes.ASTORE, slot));
+
+            trap.add(lMerge);
+            trap.add(new VarInsnNode(Opcodes.ALOAD, slot));
+            trap.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL, "java/lang/Object", "hashCode", "()I", false));
+            trap.add(new InsnNode(Opcodes.POP));
+        }
+
+        if (doTryCatch) {
+            LabelNode handler = new LabelNode();
+            LabelNode outerStart = new LabelNode();
+            LabelNode innerStart = new LabelNode();
+            LabelNode innerEnd = new LabelNode();
+            LabelNode outerEnd = new LabelNode();
+            LabelNode resume = new LabelNode();
+
+            if (method.tryCatchBlocks == null) {
+                method.tryCatchBlocks = new ArrayList<>();
+            }
+            method.tryCatchBlocks.add(new TryCatchBlockNode(
+                    outerStart, outerEnd, handler, "java/lang/Throwable"));
+            method.tryCatchBlocks.add(new TryCatchBlockNode(
+                    innerStart, innerEnd, handler, null));
+
+            trap.add(new InsnNode(Opcodes.ICONST_0));
+            trap.add(new JumpInsnNode(Opcodes.IFNE, outerStart));
+            trap.add(new JumpInsnNode(Opcodes.GOTO, resume));
+            trap.add(outerStart);
+            trap.add(innerStart);
+            trap.add(new InsnNode(Opcodes.ACONST_NULL));
+            trap.add(new InsnNode(Opcodes.ATHROW));
+            trap.add(innerEnd);
+            trap.add(outerEnd);
+            trap.add(handler);
+            trap.add(new InsnNode(Opcodes.POP));
+            trap.add(new JumpInsnNode(Opcodes.GOTO, resume));
+            trap.add(resume);
+        }
+
+        if (doCrossLinked) {
+            LabelNode lNext = new LabelNode();
+            LabelNode tryA_start = new LabelNode();
+            LabelNode tryA_end = new LabelNode();
+            LabelNode catchA = new LabelNode();
+            LabelNode tryB_start = new LabelNode();
+            LabelNode tryB_end = new LabelNode();
+            LabelNode catchB = new LabelNode();
+
+            if (method.tryCatchBlocks == null) {
+                method.tryCatchBlocks = new ArrayList<>();
+            }
+            method.tryCatchBlocks.add(new TryCatchBlockNode(tryA_start, tryA_end, catchA, "java/lang/Exception"));
+            method.tryCatchBlocks.add(new TryCatchBlockNode(tryB_start, tryB_end, catchB, "java/lang/Throwable"));
+
+            trap.add(new MethodInsnNode(Opcodes.INVOKESTATIC, "java/lang/System", "currentTimeMillis", "()J", false));
+            trap.add(new InsnNode(Opcodes.L2I));
+            trap.add(new JumpInsnNode(Opcodes.IFEQ, lNext));
+
+            trap.add(tryA_start);
+            trap.add(new TypeInsnNode(Opcodes.NEW, "java/lang/Exception"));
+            trap.add(new InsnNode(Opcodes.DUP));
+            trap.add(new MethodInsnNode(Opcodes.INVOKESPECIAL, "java/lang/Exception", "<init>", "()V", false));
+            trap.add(new InsnNode(Opcodes.ATHROW));
+            trap.add(tryA_end);
+
+            trap.add(catchA);
+            trap.add(tryB_start);
+            trap.add(new InsnNode(Opcodes.POP));
+            trap.add(new TypeInsnNode(Opcodes.NEW, "java/lang/RuntimeException"));
+            trap.add(new InsnNode(Opcodes.DUP));
+            trap.add(new MethodInsnNode(Opcodes.INVOKESPECIAL, "java/lang/RuntimeException", "<init>", "()V", false));
+            trap.add(new InsnNode(Opcodes.ATHROW));
+            trap.add(tryB_end);
+
+            trap.add(catchB);
+            trap.add(new InsnNode(Opcodes.POP));
+            trap.add(new JumpInsnNode(Opcodes.GOTO, tryA_start));
+
+            trap.add(lNext);
+        }
+
+        if (doIrreducible) {
+            LabelNode lNext = new LabelNode();
+            LabelNode lH1 = new LabelNode();
+            LabelNode lH2 = new LabelNode();
+            LabelNode lBody2 = new LabelNode();
+
+            trap.add(new MethodInsnNode(Opcodes.INVOKESTATIC, "java/lang/System", "currentTimeMillis", "()J", false));
+            trap.add(new InsnNode(Opcodes.L2I));
+            trap.add(new JumpInsnNode(Opcodes.IFEQ, lNext));
+
+            trap.add(new InsnNode(Opcodes.ICONST_1));
+            trap.add(new JumpInsnNode(Opcodes.IFNE, lH2));
+
+            trap.add(lH1);
+            trap.add(new InsnNode(Opcodes.ICONST_1));
+            trap.add(new JumpInsnNode(Opcodes.IFEQ, lBody2));
+            trap.add(new JumpInsnNode(Opcodes.GOTO, lH1));
+
+            trap.add(lH2);
+            trap.add(new InsnNode(Opcodes.ICONST_2));
+            trap.add(new InsnNode(Opcodes.POP));
+
+            trap.add(lBody2);
+            trap.add(new InsnNode(Opcodes.ICONST_3));
+            trap.add(new InsnNode(Opcodes.POP));
+            trap.add(new JumpInsnNode(Opcodes.GOTO, lH1));
+
+            trap.add(lNext);
+        }
+
+        if (doCfrSwitch) {
+            LabelNode lSw1 = new LabelNode();
+            LabelNode lSw2 = new LabelNode();
+            LabelNode lCase1_0 = new LabelNode();
+            LabelNode lCase1_1 = new LabelNode();
+            LabelNode lCase2_0 = new LabelNode();
+            LabelNode lCase2_1 = new LabelNode();
+
+            trap.add(lSw1);
+            trap.add(new InsnNode(Opcodes.ICONST_0));
+            trap.add(new TableSwitchInsnNode(0, 1, lCase1_0, lSw2, lCase1_1));
+
+            addThrowBlock(trap, lCase1_0, pickCfrException(rnd));
+
+            trap.add(lSw2);
+            trap.add(new InsnNode(Opcodes.ICONST_0));
+            trap.add(new TableSwitchInsnNode(0, 1, lCase2_0, lCase1_1, lCase2_1));
+
+            addThrowBlock(trap, lCase2_0, pickCfrException(rnd));
+            addThrowBlock(trap, lCase1_1, pickCfrException(rnd));
+            addThrowBlock(trap, lCase2_1, pickCfrException(rnd));
+        }
+
+        trap.add(new InsnNode(Opcodes.ACONST_NULL));
+        trap.add(new InsnNode(Opcodes.ATHROW));
+
+        trap.add(lReal);
+
+        method.instructions.insert(trap);
+        if (method.maxStack < 6) {
+            method.maxStack = 6;
+        }
     }
 
     private int addFieldCollisions(ClassNode cn, int level, Random rnd, ObfContext ctx) {
@@ -350,7 +505,7 @@ public final class AntiDecompilerTransformer implements Transformer {
             return 0;
         }
 
-        int want = level - 1;
+        int want = Math.max(1, level - 1);
         int added = 0;
         for (int i = 0; i < want; i++) {
             MethodNode src = candidates.get(rnd.nextInt(candidates.size()));
@@ -473,11 +628,10 @@ public final class AntiDecompilerTransformer implements Transformer {
     }
 
     private static int applyTrollStackTraces(ClassNode cn, String message, ObfContext ctx) {
-        String helperName = "__nf$troll";
-        int suffix = 0;
-        while (hasMethodNamed(cn, helperName)) {
-            helperName = "__nf$troll$" + (++suffix);
-        }
+        String helperName;
+        do {
+            helperName = ctx.names().next();
+        } while (hasMethodNamed(cn, helperName));
         Set<String> neededHelpers = new HashSet<>();
         int rewritten = 0;
         for (MethodNode mn : cn.methods) {

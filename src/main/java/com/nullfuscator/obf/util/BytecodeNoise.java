@@ -12,7 +12,16 @@ public final class BytecodeNoise {
     }
 
     public static String randomPackage(ObfContext ctx, String defaultCategory) {
+        String defaultPrefix = ctx.config().section("classRenamer").getString("prefix", "a/");
+        if (defaultPrefix == null || defaultPrefix.isEmpty()) {
+            defaultPrefix = "a/";
+        }
+        if (!defaultPrefix.endsWith("/")) {
+            defaultPrefix = defaultPrefix + "/";
+        }
+
         List<String> pkgs = new ArrayList<>();
+        List<String> obfPkgs = new ArrayList<>();
         Set<String> mixinPkgs = ctx.mixinPackages();
         for (ClassNode cn : ctx.classes()) {
             if (cn.name == null || cn.name.startsWith("META-INF/") || ObfContext.isMixin(cn) || ctx.isMixinPackage(cn.name)) {
@@ -30,23 +39,18 @@ public final class BytecodeNoise {
                 }
                 if (!isMixin && !pkgs.contains(p)) {
                     pkgs.add(p);
+                    if (p.startsWith(defaultPrefix)) {
+                        obfPkgs.add(p);
+                    }
                 }
             }
         }
-        if (pkgs.isEmpty()) {
-            return "a/" + defaultCategory + "/";
+        List<String> pool = !obfPkgs.isEmpty() ? obfPkgs : pkgs;
+        if (pool.isEmpty()) {
+            return defaultPrefix;
         }
         Random rnd = ctx.random();
-        String base = pkgs.get(rnd.nextInt(pkgs.size()));
-        for (String mp : mixinPkgs) {
-            if (base.startsWith(mp) || mp.startsWith(base)) {
-                return "a/" + defaultCategory + "/";
-            }
-        }
-        if (rnd.nextBoolean()) {
-            return base;
-        }
-        return base + defaultCategory + "/";
+        return pool.get(rnd.nextInt(pool.size()));
     }
 
     public static void decorateCarrier(ClassNode cn, ObfContext ctx) {

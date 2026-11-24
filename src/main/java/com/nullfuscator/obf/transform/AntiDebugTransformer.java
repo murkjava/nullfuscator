@@ -3,6 +3,7 @@ package com.nullfuscator.obf.transform;
 import com.nullfuscator.obf.core.Limits;
 import com.nullfuscator.obf.core.ObfContext;
 import com.nullfuscator.obf.core.Transformer;
+import com.nullfuscator.obf.util.BytecodeNoise;
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.commons.ClassRemapper;
@@ -60,7 +61,7 @@ public final class AntiDebugTransformer implements Transformer {
         for (int i = 0; i < pool; i++) {
             String name;
             do {
-                name = "a/g/" + ctx.names().next();
+                name = BytecodeNoise.randomPackage(ctx, "g") + ctx.names().next();
             } while (ctx.getClass(name) != null);
             ctx.names().reserve(name);
 

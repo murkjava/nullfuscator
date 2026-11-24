@@ -210,6 +210,18 @@ public final class ObfConfig {
         });
     }
 
+    public List<String> namingAlphabet() {
+        if (root.hasPath("defaults.naming.chars")) {
+            return safeStringList(root, "defaults.naming.chars");
+        }
+        for (String key : NAMING_SECTIONS) {
+            if (root.hasPath(key + ".chars")) {
+                return safeStringList(root, key + ".chars");
+            }
+        }
+        return Collections.emptyList();
+    }
+
     private static List<String> safeStringList(Config config, String path) {
         try {
             return config.getStringList(path);

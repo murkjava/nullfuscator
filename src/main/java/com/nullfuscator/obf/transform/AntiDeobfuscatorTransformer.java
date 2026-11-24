@@ -68,12 +68,6 @@ public final class AntiDeobfuscatorTransformer implements Transformer {
             "Ljava/lang/annotation/$Invalid;",
     };
 
-    private static final String[] STEMS = {
-            "compute", "resolve", "handle", "state", "ctx", "cache",
-            "buffer", "lookup", "codec", "mapper", "index", "session",
-            "validate", "sync", "dispatch", "transform", "process", "encode"
-    };
-
     @Override public String id() { return "antiDeobf"; }
 
     @Override public String description() { return "multi-layered anti-deobfuscator & AST shatter poison"; }
@@ -459,8 +453,8 @@ public final class AntiDeobfuscatorTransformer implements Transformer {
     }
 
     private String uniqueName(ObfContext ctx, Random rnd, Set<String> keys, String tail) {
-        for (int attempt = 0; attempt < 32; attempt++) {
-            String base = pick(STEMS, rnd) + ctx.names().next();
+        for (int attempt = 0; attempt < 64; attempt++) {
+            String base = ctx.names().next();
             if (!keys.contains(base + tail)) return base;
         }
         return null;

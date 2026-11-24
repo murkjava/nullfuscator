@@ -68,7 +68,7 @@ public final class SemanticFabricTransformer implements Transformer {
                 }
 
                 ClassNode implementationOwner = carriers.get(rnd.nextInt(carriers.size()));
-                String implementationName = "f" + ctx.names().nextRandom(rnd, 5 + rnd.nextInt(5));
+                String implementationName = ctx.names().nextRandom(rnd, 5 + rnd.nextInt(5));
                 MethodNode implementation = cloneBody(method, implementationName);
 
                 for (AbstractInsnNode insn : implementation.instructions.toArray()) {
@@ -78,7 +78,7 @@ public final class SemanticFabricTransformer implements Transformer {
                     }
 
                     ClassNode fragmentOwner = pickOther(carriers, implementationOwner, rnd);
-                    String fragmentName = "g" + ctx.names().nextRandom(rnd, 4 + rnd.nextInt(6));
+                    String fragmentName = ctx.names().nextRandom(rnd, 4 + rnd.nextInt(6));
                     MethodNode fragment = fragment(fragmentName, opcode, rnd);
                     fragmentOwner.methods.add(fragment);
 

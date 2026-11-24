@@ -9,8 +9,10 @@ import org.objectweb.asm.Type;
 import org.objectweb.asm.tree.*;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
 import java.util.Set;
 
@@ -42,6 +44,7 @@ public final class ExceptionReturnTransformer implements Transformer {
 
         Random rnd = ctx.random();
         int tokenCount = Math.max(2, Math.min(5, 1 + targets.size() / 15));
+        Map<String, String> tokenTakeMethods = new HashMap<>();
         List<String> tokenNames = new ArrayList<>();
         List<ClassNode> tokens = new ArrayList<>();
         for (int i = 0; i < tokenCount; i++) {
@@ -51,7 +54,10 @@ public final class ExceptionReturnTransformer implements Transformer {
                 tName = pkg + ctx.names().next();
             } while (ctx.getClass(tName) != null);
             ctx.names().reserve(tName);
-            ClassNode tNode = buildToken(tName, version, rnd);
+            String fieldName = ctx.names().next();
+            String takeName = ctx.names().next();
+            tokenTakeMethods.put(tName, takeName);
+            ClassNode tNode = buildToken(tName, version, rnd, fieldName, takeName);
             BytecodeNoise.decorateCarrier(tNode, ctx);
             tokenNames.add(tName);
             tokens.add(tNode);
@@ -73,7 +79,7 @@ public final class ExceptionReturnTransformer implements Transformer {
                     continue;
                 }
                 String tokenName = tokenNames.get(rnd.nextInt(tokenNames.size()));
-                transformMethod(mn, tokenName);
+                transformMethod(mn, tokenName, tokenTakeMethods.get(tokenName));
                 usedTokens.add(tokenName);
                 methods++;
                 sites += count;
@@ -117,7 +123,7 @@ public final class ExceptionReturnTransformer implements Transformer {
         return count;
     }
 
-    private static void transformMethod(MethodNode mn, String tokenName) {
+    private static void transformMethod(MethodNode mn, String tokenName, String takeName) {
         Type ret = Type.getReturnType(mn.desc);
         int returnOpcode = ret.getOpcode(Opcodes.IRETURN);
         int valueLocal = mn.maxLocals;
@@ -145,7 +151,7 @@ public final class ExceptionReturnTransformer implements Transformer {
 
         mn.instructions.add(exit);
         mn.instructions.add(new MethodInsnNode(Opcodes.INVOKESTATIC,
-                tokenName, "take", "()L" + tokenName + ";", false));
+                tokenName, takeName, "()L" + tokenName + ";", false));
         mn.instructions.add(start);
         mn.instructions.add(new InsnNode(Opcodes.ATHROW));
         mn.instructions.add(end);
@@ -162,7 +168,7 @@ public final class ExceptionReturnTransformer implements Transformer {
         mn.tryCatchBlocks.add(new TryCatchBlockNode(start, end, handler, tokenName));
     }
 
-    private static ClassNode buildToken(String name, int version, Random rnd) {
+    private static ClassNode buildToken(String name, int version, Random rnd, String fieldName, String takeName) {
         String[] bases = {
                 "java/lang/RuntimeException",
                 "java/lang/IllegalStateException",
@@ -178,7 +184,7 @@ public final class ExceptionReturnTransformer implements Transformer {
         cn.name = name;
         cn.superName = superName;
         cn.fields.add(new FieldNode(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_FINAL,
-                "t", "L" + name + ";", null, null));
+                fieldName, "L" + name + ";", null, null));
 
         MethodNode init = new MethodNode(Opcodes.ACC_PRIVATE, "<init>", "()V", null, null);
         init.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
@@ -190,13 +196,13 @@ public final class ExceptionReturnTransformer implements Transformer {
         clinit.instructions.add(new TypeInsnNode(Opcodes.NEW, name));
         clinit.instructions.add(new InsnNode(Opcodes.DUP));
         clinit.instructions.add(new MethodInsnNode(Opcodes.INVOKESPECIAL, name, "<init>", "()V", false));
-        clinit.instructions.add(new FieldInsnNode(Opcodes.PUTSTATIC, name, "t", "L" + name + ";"));
+        clinit.instructions.add(new FieldInsnNode(Opcodes.PUTSTATIC, name, fieldName, "L" + name + ";"));
         clinit.instructions.add(new InsnNode(Opcodes.RETURN));
         cn.methods.add(clinit);
 
         MethodNode take = new MethodNode(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
-                "take", "()L" + name + ";", null, null);
-        take.instructions.add(new FieldInsnNode(Opcodes.GETSTATIC, name, "t", "L" + name + ";"));
+                takeName, "()L" + name + ";", null, null);
+        take.instructions.add(new FieldInsnNode(Opcodes.GETSTATIC, name, fieldName, "L" + name + ";"));
         take.instructions.add(new InsnNode(Opcodes.ARETURN));
         cn.methods.add(take);
 
