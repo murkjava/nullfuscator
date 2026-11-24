@@ -683,6 +683,7 @@ public final class Main {
 
         p.add(new AntiDeobfuscatorTransformer());
         p.add(new FileCrasherTransformer());
+        p.add(new BannerTransformer());
         p.add(new com.nullfuscator.obf.transform.RuntimeIntegrityTransformer());
         return p;
     }

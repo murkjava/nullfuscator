@@ -29,6 +29,7 @@ antiAI { enabled: true, level: 3, decoyMethods: 8, constantEncodingPercent: 85 }
 antiDecompiler { enabled: true, level: 3, cyclicSignatures: true, tryCatchTraps: true, cfrSwitchTraps: true, trollStackTraces: true, structuralHardening: true }
 antiDeobf { enabled: true, level: 3, badSignatures: false, badRealClassSignatures: false }
 fileCrasher { enabled: true }
+banner { enabled: false, count: 1, text: "Protected by Nullfuscator", className: "Banner" }
 
 classRenamer { enabled: true, renameMain: true, prefix: "a/" }
 methodRenamer { enabled: true, renameVirtual: true, renamePublic: true }

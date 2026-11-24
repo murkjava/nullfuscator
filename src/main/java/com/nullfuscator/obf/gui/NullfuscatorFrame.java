@@ -132,6 +132,14 @@ public final class NullfuscatorFrame extends JFrame {
     private final JCheckBox runtimeIntegrityCheck = new JCheckBox("Контроль целостности архива (Runtime Integrity)", false);
     private final JTextField runtimeIntegrityIncludeField = new JTextField();
 
+    private final JCheckBox bannerCheck = new JCheckBox("Генерация баннеров (Banner Generator)", false);
+    private final JSpinner bannerCountSpinner = new JSpinner(new SpinnerNumberModel(1, 1, 1000, 1));
+    private final JTextField bannerClassNameField = new JTextField("Banner");
+    private final JTextArea bannerTextArea = new JTextArea("=======================================================\n"
+            + "               Protected by Nullfuscator               \n"
+            + "=======================================================");
+    private final JCheckBox bannerInjectExistingCheck = new JCheckBox("Внедрять поля баннера в существующие классы", false);
+
     private final JCheckBox flowFlattenCheck = new JCheckBox("Сглаживание потока (Control Flow Flattening)", true);
     private final JSpinner flowFlattenPercentSpinner = new JSpinner(new SpinnerNumberModel(100, 0, 100, 5));
     private final JCheckBox flowFlattenAllowRefLocalsCheck = new JCheckBox("Разрешить ссылочные локальные (allowReferenceLocals)", true);
@@ -2061,6 +2069,41 @@ public final class NullfuscatorFrame extends JFrame {
         crasherCard.add(integrityRow);
         bindToggle(runtimeIntegrityCheck, integrityRow);
         content.add(crasherCard);
+        content.add(Box.createVerticalStrut(12));
+
+        JPanel bannerCard = createSectionPanel("Баннеры в JAR (Banners & Watermarks)");
+        bannerCard.setLayout(new BoxLayout(bannerCard, BoxLayout.Y_AXIS));
+        bannerCard.add(makeMasterCheck(bannerCheck));
+        bannerCard.add(Box.createVerticalStrut(6));
+        bannerCard.add(createSeparator());
+        bannerCard.add(Box.createVerticalStrut(6));
+
+        JPanel bannerCountRow = createNumberRow("Количество баннеров (count):", bannerCountSpinner, "шт.");
+        bannerCard.add(bannerCountRow);
+        bannerCard.add(Box.createVerticalStrut(4));
+
+        JPanel bannerClassRow = createFieldRow("Префикс или имя класса (className):", bannerClassNameField);
+        bannerCard.add(bannerClassRow);
+        bannerCard.add(Box.createVerticalStrut(6));
+
+        JPanel bannerTextPanel = new JPanel(new BorderLayout(0, 4));
+        bannerTextPanel.setOpaque(false);
+        JLabel bannerTextLbl = new JLabel("Текст внутри баннеров:");
+        bannerTextLbl.setFont(safeFont(null, Font.BOLD, 12f));
+        bannerTextPanel.add(bannerTextLbl, BorderLayout.NORTH);
+        bannerTextArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
+        bannerTextArea.setRows(5);
+        bannerTextArea.setLineWrap(false);
+        JScrollPane bannerScroll = new JScrollPane(bannerTextArea);
+        bannerScroll.setPreferredSize(new Dimension(100, 110));
+        bannerTextPanel.add(bannerScroll, BorderLayout.CENTER);
+        bannerCard.add(bannerTextPanel);
+        bannerCard.add(Box.createVerticalStrut(6));
+
+        bannerCard.add(bannerInjectExistingCheck);
+
+        bindToggle(bannerCheck, bannerCountRow, bannerClassRow, bannerTextPanel, bannerInjectExistingCheck);
+        content.add(bannerCard);
 
         return wrapInScroll(content);
     }
@@ -2905,6 +2948,24 @@ public final class NullfuscatorFrame extends JFrame {
             }
         }
 
+        if (root.hasPath("banner") || root.hasPath("banners")) {
+            String bKey = root.hasPath("banner") ? "banner" : "banners";
+            ObfConfig.Section bSec = cfg.section(bKey);
+            bannerCheck.setSelected(bSec.enabled());
+            if (bSec.raw().hasPath("count")) {
+                setClampedSpinner(bannerCountSpinner, bSec.getInt("count", 1));
+            }
+            if (bSec.raw().hasPath("className")) {
+                bannerClassNameField.setText(bSec.getString("className", "Banner"));
+            }
+            if (bSec.raw().hasPath("text")) {
+                bannerTextArea.setText(bSec.getString("text", ""));
+            }
+            if (bSec.raw().hasPath("injectExisting")) {
+                bannerInjectExistingCheck.setSelected(bSec.getBoolean("injectExisting", false));
+            }
+        }
+
         if (root.hasPath("classRenamer")) {
             ObfConfig.Section cr = cfg.section("classRenamer");
             renameClassesCheck.setSelected(cr.enabled());
@@ -3262,6 +3323,7 @@ public final class NullfuscatorFrame extends JFrame {
 
                 fileCrasherCheck.setSelected(false);
                 runtimeIntegrityCheck.setSelected(false);
+                bannerCheck.setSelected(false);
 
                 refHidingCheck.setSelected(false);
                 refHidingPercentSpinner.setValue(10);
@@ -3398,6 +3460,7 @@ public final class NullfuscatorFrame extends JFrame {
 
                 fileCrasherCheck.setSelected(false);
                 runtimeIntegrityCheck.setSelected(false);
+                bannerCheck.setSelected(false);
 
                 fieldIndirectionCheck.setSelected(false);
                 fieldIndirectionPercentSpinner.setValue(20);
@@ -3517,6 +3580,7 @@ public final class NullfuscatorFrame extends JFrame {
 
                 fileCrasherCheck.setSelected(true);
                 runtimeIntegrityCheck.setSelected(false);
+                bannerCheck.setSelected(false);
 
                 refHidingCheck.setSelected(true);
                 refHidingInClassCheck.setSelected(true);
@@ -3659,6 +3723,7 @@ public final class NullfuscatorFrame extends JFrame {
 
                 fileCrasherCheck.setSelected(true);
                 runtimeIntegrityCheck.setSelected(false);
+                bannerCheck.setSelected(false);
 
                 refHidingCheck.setSelected(true);
                 refHidingInClassCheck.setSelected(true);
@@ -4034,6 +4099,19 @@ public final class NullfuscatorFrame extends JFrame {
         } else {
             sb.append("runtimeIntegrity.enabled = false\n\n");
         }
+
+        sb.append("banner {\n");
+        sb.append("  enabled: ").append(bannerCheck.isSelected()).append("\n");
+        sb.append("  count: ").append(bannerCountSpinner.getValue()).append("\n");
+        sb.append("  className: \"").append(escapeHocon(bannerClassNameField.getText().trim())).append("\"\n");
+        sb.append("  injectExisting: ").append(bannerInjectExistingCheck.isSelected()).append("\n");
+        String bText = bannerTextArea.getText();
+        if (bText.contains("\n") || bText.contains("\r")) {
+            sb.append("  text: \"\"\"").append(bText.replace("\"\"\"", "\\\"\\\"\\\"")).append("\"\"\"\n");
+        } else {
+            sb.append("  text: \"").append(escapeHocon(bText)).append("\"\n");
+        }
+        sb.append("}\n\n");
 
         sb.append("classRenamer {\n");
         sb.append("  enabled: ").append(renameClassesCheck.isSelected()).append("\n");
@@ -4634,6 +4712,12 @@ public final class NullfuscatorFrame extends JFrame {
             prefs.putBoolean("runtime_integrity_enabled", runtimeIntegrityCheck.isSelected());
             prefs.put("runtime_integrity_include", runtimeIntegrityIncludeField.getText());
 
+            prefs.putBoolean("banner_enabled", bannerCheck.isSelected());
+            putSpinner("banner_count", bannerCountSpinner);
+            prefs.put("banner_class_name", bannerClassNameField.getText());
+            prefs.put("banner_text", bannerTextArea.getText());
+            prefs.putBoolean("banner_inject_existing", bannerInjectExistingCheck.isSelected());
+
             prefs.putBoolean("flow_flatten_enabled", flowFlattenCheck.isSelected());
             putSpinner("flow_flatten_pct", flowFlattenPercentSpinner);
             prefs.putBoolean("flow_flatten_ref_locals", flowFlattenAllowRefLocalsCheck.isSelected());
@@ -4833,6 +4917,12 @@ public final class NullfuscatorFrame extends JFrame {
             fileCrasherCheck.setSelected(prefs.getBoolean("file_crasher_enabled", fileCrasherCheck.isSelected()));
             runtimeIntegrityCheck.setSelected(prefs.getBoolean("runtime_integrity_enabled", runtimeIntegrityCheck.isSelected()));
             runtimeIntegrityIncludeField.setText(prefs.get("runtime_integrity_include", runtimeIntegrityIncludeField.getText()));
+
+            bannerCheck.setSelected(prefs.getBoolean("banner_enabled", bannerCheck.isSelected()));
+            getSpinner("banner_count", bannerCountSpinner);
+            bannerClassNameField.setText(prefs.get("banner_class_name", bannerClassNameField.getText()));
+            bannerTextArea.setText(prefs.get("banner_text", bannerTextArea.getText()));
+            bannerInjectExistingCheck.setSelected(prefs.getBoolean("banner_inject_existing", bannerInjectExistingCheck.isSelected()));
 
             flowFlattenCheck.setSelected(prefs.getBoolean("flow_flatten_enabled", flowFlattenCheck.isSelected()));
             getSpinner("flow_flatten_pct", flowFlattenPercentSpinner);
