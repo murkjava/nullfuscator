@@ -53,7 +53,7 @@ public final class AntiDecompilerRegression implements Opcodes {
         errorMethod.instructions.add(new InsnNode(RETURN));
         cn.methods.add(errorMethod);
 
-        ObfConfig config = ObfConfig.parse("antiDecompiler { enabled: true, level: 3, cyclicSignatures: true, tryCatchTraps: true, trapPercent: 100, trollStackTraces: true, structuralHardening: true }");
+        ObfConfig config = ObfConfig.parse("antiDecompiler { enabled: true, level: 3, cyclicSignatures: true, tryCatchTraps: true, cfrSwitchTraps: true, trapPercent: 100, trollStackTraces: true, structuralHardening: true }");
         ObfContext ctx = new ObfContext(config, 42, new ObfLog(false), new NameGenerator(new String[] { "I", "l" }));
         ctx.putClass(cn);
         ctx.initializePolicies();
@@ -64,6 +64,15 @@ public final class AntiDecompilerRegression implements Opcodes {
         check(cn.signature != null && cn.signature.contains("__F"), "Cyclic generic signature must be injected");
         check(work.tryCatchBlocks != null && work.tryCatchBlocks.size() >= 2, "Overlapping try-finally traps must be injected");
         check(cn.attrs != null && !cn.attrs.isEmpty(), "Structural hardening attributes must be present on class");
+
+        boolean hasTableSwitch = false;
+        for (AbstractInsnNode insn : work.instructions.toArray()) {
+            if (insn instanceof TableSwitchInsnNode) {
+                hasTableSwitch = true;
+                break;
+            }
+        }
+        check(hasTableSwitch, "CFR switch contiguity trap must be injected");
 
         ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_FRAMES | ClassWriter.COMPUTE_MAXS);
         cn.accept(cw);

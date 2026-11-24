@@ -25,6 +25,7 @@ public final class AntiDeobfuscatorTransformer implements Transformer {
             "L<>;",
             "<T::Ljava/lang/Comparable<TT;>;:Ljava/lang/Cloneable;>Ljava/lang/Object;",
             "<X:TT;T:TX;>Ljava/lang/Object;",
+            "<E>>>;Ljava/lang/Object;",
     };
 
     private static final String[] BAD_FIELD_SIGS = {
@@ -37,6 +38,8 @@ public final class AntiDeobfuscatorTransformer implements Transformer {
             "L;",
             "Ljava/lang/Object<*>;",
             "Ljava/lang/Object<+*>;",
+            "TE>>>;",
+            "<E>>>;",
     };
 
     private static final String[] BAD_METHOD_SIGS = {
@@ -52,7 +55,9 @@ public final class AntiDeobfuscatorTransformer implements Transformer {
             "<T:Ljava/lang/Object<*>;>Ljava/lang/Object;",
             "<T::Ljava/lang/Comparable<TT;>;:Ljava/lang/Cloneable;>(TT;)TT;",
             "<X:TT;T:TX;>()V",
-            "(Ljava/util/List<Ljava/util/List<Ljava/util/List<Ljava/util/List<*>;>;>;>;)V"
+            "(Ljava/util/List<Ljava/util/List<Ljava/util/List<Ljava/util/List<*>;>;>;>;)V",
+            "<E>>>;()V",
+            "()TE>>>;",
     };
 
     private static final String[] GHOST_ANNOTATIONS = {

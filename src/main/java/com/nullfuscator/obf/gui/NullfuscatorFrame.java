@@ -108,6 +108,7 @@ public final class NullfuscatorFrame extends JFrame {
     private final JSpinner antiDecompilerLevelSpinner = new JSpinner(new SpinnerNumberModel(3, 1, 3, 1));
     private final JCheckBox antiDecompilerCyclicSigCheck = new JCheckBox("Циклические дженерики (StackOverflow в CFR/Fernflower/Recaf)", true);
     private final JCheckBox antiDecompilerTryCatchTrapCheck = new JCheckBox("Ловушки исключений try-finally (краш AST в Recaf/Vineflower/Procyon)", true);
+    private final JCheckBox antiDecompilerCfrSwitchTrapCheck = new JCheckBox("Краш CFR в Recaf (Switch Contiguity Trap)", true);
     private final JCheckBox antiDecompilerTrollStackTracesCheck = new JCheckBox("Перехват printStackTrace (ASCII-арт заглушка в логах)", true);
     private final JCheckBox antiDecompilerStructuralHardeningCheck = new JCheckBox("Структурное усложнение (нестандартные атрибуты)", true);
     private final JSpinner antiDecompilerTrapPercentSpinner = new JSpinner(new SpinnerNumberModel(80, 0, 100, 5));
@@ -1975,10 +1976,11 @@ public final class NullfuscatorFrame extends JFrame {
         decompCard.add(createSeparator());
         decompCard.add(Box.createVerticalStrut(6));
 
-        JPanel decompGrid = new JPanel(new GridLayout(4, 1, 8, 6));
+        JPanel decompGrid = new JPanel(new GridLayout(0, 1, 8, 6));
         decompGrid.setOpaque(false);
         decompGrid.add(antiDecompilerCyclicSigCheck);
         decompGrid.add(antiDecompilerTryCatchTrapCheck);
+        decompGrid.add(antiDecompilerCfrSwitchTrapCheck);
         decompGrid.add(antiDecompilerTrollStackTracesCheck);
         decompGrid.add(antiDecompilerStructuralHardeningCheck);
         decompCard.add(decompGrid);
@@ -2834,6 +2836,9 @@ public final class NullfuscatorFrame extends JFrame {
             if (ad.raw().hasPath("tryCatchTraps")) {
                 antiDecompilerTryCatchTrapCheck.setSelected(ad.getBoolean("tryCatchTraps", true));
             }
+            if (ad.raw().hasPath("cfrSwitchTraps")) {
+                antiDecompilerCfrSwitchTrapCheck.setSelected(ad.getBoolean("cfrSwitchTraps", true));
+            }
             if (ad.raw().hasPath("trapPercent")) {
                 setClampedSpinner(antiDecompilerTrapPercentSpinner, ad.getInt("trapPercent", 80));
             }
@@ -3235,6 +3240,7 @@ public final class NullfuscatorFrame extends JFrame {
                 antiDecompilerLevelSpinner.setValue(1);
                 antiDecompilerCyclicSigCheck.setSelected(false);
                 antiDecompilerTryCatchTrapCheck.setSelected(false);
+                antiDecompilerCfrSwitchTrapCheck.setSelected(false);
                 antiDecompilerTrollStackTracesCheck.setSelected(false);
                 antiDecompilerStructuralHardeningCheck.setSelected(false);
                 antiDecompilerTrapPercentSpinner.setValue(0);
@@ -3370,6 +3376,7 @@ public final class NullfuscatorFrame extends JFrame {
                 antiDecompilerLevelSpinner.setValue(1);
                 antiDecompilerCyclicSigCheck.setSelected(false);
                 antiDecompilerTryCatchTrapCheck.setSelected(false);
+                antiDecompilerCfrSwitchTrapCheck.setSelected(false);
                 antiDecompilerTrollStackTracesCheck.setSelected(false);
                 antiDecompilerStructuralHardeningCheck.setSelected(false);
                 antiDecompilerTrapPercentSpinner.setValue(0);
@@ -3488,6 +3495,7 @@ public final class NullfuscatorFrame extends JFrame {
                 antiDecompilerLevelSpinner.setValue(3);
                 antiDecompilerCyclicSigCheck.setSelected(true);
                 antiDecompilerTryCatchTrapCheck.setSelected(true);
+                antiDecompilerCfrSwitchTrapCheck.setSelected(true);
                 antiDecompilerTrollStackTracesCheck.setSelected(true);
                 antiDecompilerStructuralHardeningCheck.setSelected(true);
                 antiDecompilerTrapPercentSpinner.setValue(80);
@@ -3629,6 +3637,7 @@ public final class NullfuscatorFrame extends JFrame {
                 antiDecompilerLevelSpinner.setValue(3);
                 antiDecompilerCyclicSigCheck.setSelected(true);
                 antiDecompilerTryCatchTrapCheck.setSelected(true);
+                antiDecompilerCfrSwitchTrapCheck.setSelected(true);
                 antiDecompilerTrollStackTracesCheck.setSelected(true);
                 antiDecompilerStructuralHardeningCheck.setSelected(true);
                 antiDecompilerTrapPercentSpinner.setValue(100);
@@ -3985,6 +3994,7 @@ public final class NullfuscatorFrame extends JFrame {
         sb.append("  level: ").append(antiDecompilerLevelSpinner.getValue()).append("\n");
         sb.append("  cyclicSignatures: ").append(antiDecompilerCyclicSigCheck.isSelected()).append("\n");
         sb.append("  tryCatchTraps: ").append(antiDecompilerTryCatchTrapCheck.isSelected()).append("\n");
+        sb.append("  cfrSwitchTraps: ").append(antiDecompilerCfrSwitchTrapCheck.isSelected()).append("\n");
         sb.append("  trapPercent: ").append(antiDecompilerTrapPercentSpinner.getValue()).append("\n");
         sb.append("  trollStackTraces: ").append(antiDecompilerTrollStackTracesCheck.isSelected()).append("\n");
         sb.append("  structuralHardening: ").append(antiDecompilerStructuralHardeningCheck.isSelected()).append("\n");
@@ -4600,6 +4610,7 @@ public final class NullfuscatorFrame extends JFrame {
             putSpinner("anti_decomp_level", antiDecompilerLevelSpinner);
             prefs.putBoolean("anti_decomp_cyclic_sig", antiDecompilerCyclicSigCheck.isSelected());
             prefs.putBoolean("anti_decomp_try_catch_trap", antiDecompilerTryCatchTrapCheck.isSelected());
+            prefs.putBoolean("anti_decomp_cfr_switch_trap", antiDecompilerCfrSwitchTrapCheck.isSelected());
             prefs.putBoolean("anti_decomp_troll_trace", antiDecompilerTrollStackTracesCheck.isSelected());
             prefs.putBoolean("anti_decomp_structural_hardening", antiDecompilerStructuralHardeningCheck.isSelected());
             putSpinner("anti_decomp_trap_pct", antiDecompilerTrapPercentSpinner);
@@ -4799,6 +4810,7 @@ public final class NullfuscatorFrame extends JFrame {
             getSpinner("anti_decomp_level", antiDecompilerLevelSpinner);
             antiDecompilerCyclicSigCheck.setSelected(prefs.getBoolean("anti_decomp_cyclic_sig", antiDecompilerCyclicSigCheck.isSelected()));
             antiDecompilerTryCatchTrapCheck.setSelected(prefs.getBoolean("anti_decomp_try_catch_trap", antiDecompilerTryCatchTrapCheck.isSelected()));
+            antiDecompilerCfrSwitchTrapCheck.setSelected(prefs.getBoolean("anti_decomp_cfr_switch_trap", antiDecompilerCfrSwitchTrapCheck.isSelected()));
             antiDecompilerTrollStackTracesCheck.setSelected(prefs.getBoolean("anti_decomp_troll_trace", antiDecompilerTrollStackTracesCheck.isSelected()));
             antiDecompilerStructuralHardeningCheck.setSelected(prefs.getBoolean("anti_decomp_structural_hardening", antiDecompilerStructuralHardeningCheck.isSelected()));
             getSpinner("anti_decomp_trap_pct", antiDecompilerTrapPercentSpinner);
