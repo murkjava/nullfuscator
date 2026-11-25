@@ -28,6 +28,7 @@ public final class NullfuscatorGui {
 
             UIManager.put("defaultFont", uiFont);
             UIManager.put("TabbedPane.font", uiBold);
+            UIManager.put("TabbedPane.tabAreaAlignment", "fill");
             UIManager.put("TextArea.font", monoFont);
             UIManager.put("Tree.font", monoFont);
             UIManager.put("List.font", monoFont);

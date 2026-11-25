@@ -122,7 +122,8 @@ public final class BannerTransformer implements Transformer {
         int injected = 0;
         List<ClassNode> targets = ctx.targets(id());
         for (ClassNode cn : targets) {
-            if ((cn.access & (Opcodes.ACC_ANNOTATION | Opcodes.ACC_MODULE)) != 0) {
+            if ((cn.access & (Opcodes.ACC_ANNOTATION | Opcodes.ACC_MODULE | Opcodes.ACC_INTERFACE)) != 0
+                    || isMixinClass(cn)) {
                 continue;
             }
             if (cn.fields == null) {
@@ -149,5 +150,23 @@ public final class BannerTransformer implements Transformer {
             injected++;
         }
         return injected;
+    }
+
+    private static boolean isMixinClass(ClassNode cn) {
+        if (cn.invisibleAnnotations != null) {
+            for (var ann : cn.invisibleAnnotations) {
+                if ("Lorg/spongepowered/asm/mixin/Mixin;".equals(ann.desc)) {
+                    return true;
+                }
+            }
+        }
+        if (cn.visibleAnnotations != null) {
+            for (var ann : cn.visibleAnnotations) {
+                if ("Lorg/spongepowered/asm/mixin/Mixin;".equals(ann.desc)) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 }
