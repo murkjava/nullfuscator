@@ -18,7 +18,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public final class ObfConfig {
 
     private static final Set<String> NAMING_SECTIONS = Set.of(
-            "classRenamer", "methodRenamer", "fieldRenamer", "recordMetadata");
+            "classRenamer", "methodRenamer", "fieldRenamer", "recordMetadata", "resourceRenamer");
 
     private final Config root;
     private final Set<File> sourceFiles;

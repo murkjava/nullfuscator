@@ -41,12 +41,12 @@ public final class SemanticFabricTransformer implements Transformer {
         int percent = clamp(ctx.config().section(id()).getInt("percent", 35), 0, 100);
         int minOps = Math.max(1, ctx.config().section(id()).getInt("minArithmeticOps", 3));
         int maxMethods = Math.max(1, ctx.config().section(id()).getInt("maxMethods", 64));
-        int carrierCount = clamp(ctx.config().section(id()).getInt("carriers", 8), 3, 32);
         if (percent == 0) {
             return;
         }
 
         Random rnd = ctx.random();
+        int carrierCount = clamp(ctx.config().section(id()).getInt("carriers", 8) + rnd.nextInt(5), 3, 32);
         List<ClassNode> original = ctx.targets(id());
         List<ClassNode> carriers = makeCarriers(ctx, original, carrierCount);
         int protectedMethods = 0;

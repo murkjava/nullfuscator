@@ -57,9 +57,13 @@ public final class ResourceRenamer implements Transformer {
         }
 
         List<String> chars = section.getStringList("chars");
+        if (chars.isEmpty()) {
+            chars = ctx.config().namingAlphabet();
+        }
         String[] alphabet;
         if (!chars.isEmpty()) {
             alphabet = chars.stream()
+                    .filter(s -> s != null && !s.isEmpty())
                     .map(s -> s.toLowerCase(Locale.ROOT))
                     .filter(s -> s.matches("[a-z0-9_.-]+"))
                     .toArray(String[]::new);

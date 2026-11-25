@@ -42,16 +42,16 @@ public final class MethodExtractionTransformer implements Transformer {
         var sec = ctx.config().section(id());
         int percent = clamp(sec.getInt("percent", 100), 0, 100);
         int maxMethods = Math.max(1, sec.getInt("maxMethods", 128));
-        int carrierCount = clamp(sec.getInt("carriers", 16), 3, 48);
         int minInstructions = Math.max(4, sec.getInt("minInstructions", 8));
         if (percent == 0 || ctx.isModularJar()) {
             return;
         }
 
+        Random rnd = ctx.random();
+        int carrierCount = clamp(sec.getInt("carriers", 16) + rnd.nextInt(9), 3, 48);
         List<ClassNode> targets = ctx.targets(id());
         List<ClassNode> carriers = makeCarriers(ctx, targets, carrierCount);
         String main = Remapping.mainClassInternalName(ctx);
-        Random rnd = ctx.random();
 
         Map<String, Destination> moved = new HashMap<>();
         Set<String> subclassed = new HashSet<>();

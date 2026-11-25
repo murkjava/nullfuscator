@@ -134,7 +134,6 @@ public final class NullfuscatorFrame extends JFrame {
     private final JCheckBox antiDebugRejectAgentsCheck = new JCheckBox("Блокировать внешние Java-агенты (-javaagent)", false);
 
     private final JCheckBox fileCrasherCheck = new JCheckBox("Мусорные атрибуты для краша утилит (File Crasher)", true);
-    private final JCheckBox runtimeIntegrityCheck = new JCheckBox("Контроль целостности архива (Runtime Integrity)", false);
     private final JTextField runtimeIntegrityIncludeField = new JTextField();
 
     private final JCheckBox bannerCheck = new JCheckBox("Генерация баннеров (Banner Generator)", false);
@@ -232,6 +231,7 @@ public final class NullfuscatorFrame extends JFrame {
 
     private final JCheckBox resourceRenamerCheck = new JCheckBox("Переименование ресурсов (Resource Renamer)", false);
     private final JSpinner resourceDepthSpinner = new JSpinner(new SpinnerNumberModel(8, 1, 32, 1));
+    private final JTextField resourceCharsField = new JTextField();
     private final JTextField resourceExcludeNsField = new JTextField("minecraft");
     private final JTextField resourceExcludeDirsField = new JTextField("fonts, icons, shaders");
 
@@ -272,14 +272,17 @@ public final class NullfuscatorFrame extends JFrame {
         setupCheckboxSynchronizations();
 
         JTabbedPane tabbedPane = new JTabbedPane();
-        tabbedPane.setFont(safeFont(tabbedPane.getFont(), Font.BOLD, 13.5f));
-        tabbedPane.addTab("Обфускатор", createObfuscatorPanel());
-        tabbedPane.addTab("Инспектор JAR", createJarInspectorPanel());
-        tabbedPane.addTab("Исключения (Exemptions)", createExemptionsPanel());
-        tabbedPane.addTab("Трансформеры", createTransformersPanel());
-        tabbedPane.addTab("Лимиты и бюджеты", createBudgetsPanel());
-        tabbedPane.addTab("Демаппинг (Retrace)", createRetracePanel());
-        tabbedPane.addTab("Инфо о маппинге", createMappingInfoPanel());
+        tabbedPane.setTabLayoutPolicy(JTabbedPane.SCROLL_TAB_LAYOUT);
+        tabbedPane.setFont(safeFont(tabbedPane.getFont(), Font.BOLD, 12.5f));
+        tabbedPane.putClientProperty("JTabbedPane.tabIconPlacement", SwingConstants.LEADING);
+        tabbedPane.putClientProperty("JTabbedPane.tabAreaAlignment", "fill");
+        tabbedPane.addTab("Обфускатор", new VectorIcon(IconType.SHIELD, 15, new Color(161, 161, 170)), createObfuscatorPanel());
+        tabbedPane.addTab("Инспектор JAR", new VectorIcon(IconType.FOLDER, 15, new Color(161, 161, 170)), createJarInspectorPanel());
+        tabbedPane.addTab("Исключения (Exemptions)", new VectorIcon(IconType.FILTER, 15, new Color(161, 161, 170)), createExemptionsPanel());
+        tabbedPane.addTab("Трансформеры", new VectorIcon(IconType.LAYERS, 15, new Color(161, 161, 170)), createTransformersPanel());
+        tabbedPane.addTab("Лимиты и бюджеты", new VectorIcon(IconType.SLIDERS, 15, new Color(161, 161, 170)), createBudgetsPanel());
+        tabbedPane.addTab("Демаппинг (Retrace)", new VectorIcon(IconType.ROTATE, 15, new Color(161, 161, 170)), createRetracePanel());
+        tabbedPane.addTab("Инфо о маппинге", new VectorIcon(IconType.INFO, 15, new Color(161, 161, 170)), createMappingInfoPanel());
 
         setContentPane(tabbedPane);
         setupAppIcon();
@@ -571,6 +574,9 @@ public final class NullfuscatorFrame extends JFrame {
         obfuscateBtn.setBackground(new Color(37, 99, 235));
         obfuscateBtn.setForeground(Color.WHITE);
         obfuscateBtn.setFocusPainted(false);
+        obfuscateBtn.setIcon(new VectorIcon(IconType.PLAY, 14, Color.WHITE));
+        obfuscateBtn.setIconTextGap(8);
+        installHoverColorAnimation(obfuscateBtn, new Color(37, 99, 235), new Color(59, 130, 246));
         obfuscateBtn.addActionListener(e -> startObfuscation());
 
         JPanel statusWrapper = new JPanel(new BorderLayout(4, 4));
@@ -689,7 +695,7 @@ public final class NullfuscatorFrame extends JFrame {
         boolean inIntegrity = isNodeInIntegrity(node);
         if (node.isLeaf() && isClassNode(node)) {
             if (inIntegrity) {
-                JMenuItem removeIntegrityItem = new JMenuItem("Убрать из контроля целостности");
+                JMenuItem removeIntegrityItem = new JMenuItem("Удалить из проверки целостности");
                 removeIntegrityItem.addActionListener(e -> removeNodeFromIntegrity(node));
                 menu.add(removeIntegrityItem);
             } else {
@@ -698,9 +704,15 @@ public final class NullfuscatorFrame extends JFrame {
                 menu.add(addIntegrityItem);
             }
         } else if (!node.isLeaf()) {
-            JMenuItem addPkgIntegrityItem = new JMenuItem("Добавить весь пакет в контроль целостности (*)");
-            addPkgIntegrityItem.addActionListener(e -> addNodeToIntegrity(node, true));
-            menu.add(addPkgIntegrityItem);
+            if (inIntegrity) {
+                JMenuItem removePkgIntegrityItem = new JMenuItem("Удалить из проверки целостности");
+                removePkgIntegrityItem.addActionListener(e -> removeNodeFromIntegrity(node));
+                menu.add(removePkgIntegrityItem);
+            } else {
+                JMenuItem addPkgIntegrityItem = new JMenuItem("Добавить весь пакет в контроль целостности (*)");
+                addPkgIntegrityItem.addActionListener(e -> addNodeToIntegrity(node, true));
+                menu.add(addPkgIntegrityItem);
+            }
         }
 
         menu.addSeparator();
@@ -2061,25 +2073,6 @@ public final class NullfuscatorFrame extends JFrame {
         JPanel crasherCard = createSectionPanel("Целостность и краш инструментов (Hardening & Crasher)");
         crasherCard.setLayout(new BoxLayout(crasherCard, BoxLayout.Y_AXIS));
         crasherCard.add(makeMasterCheck(fileCrasherCheck));
-        crasherCard.add(Box.createVerticalStrut(6));
-        crasherCard.add(createSeparator());
-        crasherCard.add(Box.createVerticalStrut(6));
-        crasherCard.add(makeMasterCheck(runtimeIntegrityCheck));
-        crasherCard.add(Box.createVerticalStrut(4));
-
-        JPanel integrityInputPanel = new JPanel(new BorderLayout(6, 0));
-        integrityInputPanel.setOpaque(false);
-        runtimeIntegrityIncludeField.putClientProperty("JTextField.placeholderText", "Главный класс или все (*)");
-        integrityInputPanel.add(runtimeIntegrityIncludeField, BorderLayout.CENTER);
-        JButton pickIntegrityBtn = new JButton("Выбрать из JAR...");
-        pickIntegrityBtn.setFont(safeFont(null, Font.PLAIN, 12f));
-        pickIntegrityBtn.setPreferredSize(new Dimension(145, 28));
-        pickIntegrityBtn.addActionListener(e -> openIntegrityClassPicker());
-        integrityInputPanel.add(pickIntegrityBtn, BorderLayout.EAST);
-
-        JPanel integrityRow = createFieldRow("Классы для контроля целостности (include):", integrityInputPanel);
-        crasherCard.add(integrityRow);
-        bindToggle(runtimeIntegrityCheck, integrityRow);
         content.add(crasherCard);
         content.add(Box.createVerticalStrut(12));
 
@@ -2481,14 +2474,17 @@ public final class NullfuscatorFrame extends JFrame {
         resCard.add(createSeparator());
         resCard.add(Box.createVerticalStrut(6));
         JPanel resDepthRow = createNumberRow("Длина имен ресурсов (depth):", resourceDepthSpinner, "симв.");
+        JPanel resCharsRow = createFieldRow("Символы имен (пусто — из общего алфавита):", resourceCharsField);
         JPanel resNsRow = createFieldRow("Исключенные namespaces:", resourceExcludeNsField);
         JPanel resDirsRow = createFieldRow("Исключенные директории:", resourceExcludeDirsField);
         resCard.add(resDepthRow);
         resCard.add(Box.createVerticalStrut(4));
+        resCard.add(resCharsRow);
+        resCard.add(Box.createVerticalStrut(4));
         resCard.add(resNsRow);
         resCard.add(Box.createVerticalStrut(4));
         resCard.add(resDirsRow);
-        bindToggle(resourceRenamerCheck, resDepthRow, resNsRow, resDirsRow);
+        bindToggle(resourceRenamerCheck, resDepthRow, resCharsRow, resNsRow, resDirsRow);
         content.add(resCard);
         content.add(Box.createVerticalStrut(12));
 
@@ -2995,8 +2991,7 @@ public final class NullfuscatorFrame extends JFrame {
 
         if (root.hasPath("runtimeIntegrity")) {
             ObfConfig.Section ri = cfg.section("runtimeIntegrity");
-            runtimeIntegrityCheck.setSelected(ri.enabled());
-            if (ri.raw().hasPath("include")) {
+                if (ri.raw().hasPath("include")) {
                 runtimeIntegrityIncludeField.setText(String.join(", ", ri.getStringList("include")));
             }
         }
@@ -3087,6 +3082,9 @@ public final class NullfuscatorFrame extends JFrame {
             resourceRenamerCheck.setSelected(rr.enabled());
             if (rr.raw().hasPath("depth")) {
                 setClampedSpinner(resourceDepthSpinner, rr.getInt("depth", 8));
+            }
+            if (rr.raw().hasPath("chars")) {
+                resourceCharsField.setText(String.join(", ", rr.getStringList("chars")));
             }
             if (rr.raw().hasPath("excludeNamespaces")) {
                 resourceExcludeNsField.setText(String.join(", ", rr.getStringList("excludeNamespaces")));
@@ -3388,8 +3386,7 @@ public final class NullfuscatorFrame extends JFrame {
                 antiDebugRejectAgentsCheck.setSelected(false);
 
                 fileCrasherCheck.setSelected(false);
-                runtimeIntegrityCheck.setSelected(false);
-                bannerCheck.setSelected(false);
+                        bannerCheck.setSelected(false);
 
                 refHidingCheck.setSelected(false);
                 refHidingPercentSpinner.setValue(10);
@@ -3530,8 +3527,7 @@ public final class NullfuscatorFrame extends JFrame {
                 antiDebugRejectAgentsCheck.setSelected(false);
 
                 fileCrasherCheck.setSelected(false);
-                runtimeIntegrityCheck.setSelected(false);
-                bannerCheck.setSelected(false);
+                        bannerCheck.setSelected(false);
 
                 fieldIndirectionCheck.setSelected(false);
                 fieldIndirectionPercentSpinner.setValue(20);
@@ -3655,8 +3651,7 @@ public final class NullfuscatorFrame extends JFrame {
                 antiDebugRejectAgentsCheck.setSelected(false);
 
                 fileCrasherCheck.setSelected(true);
-                runtimeIntegrityCheck.setSelected(false);
-                bannerCheck.setSelected(false);
+                        bannerCheck.setSelected(false);
 
                 refHidingCheck.setSelected(true);
                 refHidingInClassCheck.setSelected(true);
@@ -3803,8 +3798,7 @@ public final class NullfuscatorFrame extends JFrame {
                 antiDebugRejectAgentsCheck.setSelected(true);
 
                 fileCrasherCheck.setSelected(true);
-                runtimeIntegrityCheck.setSelected(false);
-                bannerCheck.setSelected(false);
+                        bannerCheck.setSelected(false);
 
                 refHidingCheck.setSelected(true);
                 refHidingInClassCheck.setSelected(true);
@@ -4174,13 +4168,11 @@ public final class NullfuscatorFrame extends JFrame {
 
         sb.append("fileCrasher.enabled = ").append(fileCrasherCheck.isSelected()).append("\n");
 
-        if (runtimeIntegrityCheck.isSelected()) {
+        List<String> integrityInc = parseCommaOrLineSeparated(runtimeIntegrityIncludeField.getText());
+        if (!integrityInc.isEmpty()) {
             sb.append("runtimeIntegrity {\n");
             sb.append("  enabled: true\n");
-            List<String> inc = parseCommaOrLineSeparated(runtimeIntegrityIncludeField.getText());
-            if (!inc.isEmpty()) {
-                sb.append("  \"include\": [ ").append(joinQuotedHocon(inc)).append(" ]\n");
-            }
+            sb.append("  \"include\": [ ").append(joinQuotedHocon(integrityInc)).append(" ]\n");
             sb.append("}\n\n");
         } else {
             sb.append("runtimeIntegrity.enabled = false\n\n");
@@ -4231,6 +4223,10 @@ public final class NullfuscatorFrame extends JFrame {
         sb.append("resourceRenamer {\n");
         sb.append("  enabled: ").append(resourceRenamerCheck.isSelected()).append("\n");
         sb.append("  depth: ").append(resourceDepthSpinner.getValue()).append("\n");
+        List<String> resChars = parseCommaOrLineSeparated(resourceCharsField.getText());
+        if (!resChars.isEmpty()) {
+            sb.append("  chars: [ ").append(joinQuotedHocon(resChars)).append(" ]\n");
+        }
         List<String> resNs = parseCommaOrLineSeparated(resourceExcludeNsField.getText());
         if (!resNs.isEmpty()) {
             sb.append("  excludeNamespaces: [ ").append(joinQuotedHocon(resNs)).append(" ]\n");
@@ -4802,7 +4798,6 @@ public final class NullfuscatorFrame extends JFrame {
             prefs.putBoolean("anti_debug_reject_agents", antiDebugRejectAgentsCheck.isSelected());
 
             prefs.putBoolean("file_crasher_enabled", fileCrasherCheck.isSelected());
-            prefs.putBoolean("runtime_integrity_enabled", runtimeIntegrityCheck.isSelected());
             prefs.put("runtime_integrity_include", runtimeIntegrityIncludeField.getText());
 
             prefs.putBoolean("banner_enabled", bannerCheck.isSelected());
@@ -4898,6 +4893,7 @@ public final class NullfuscatorFrame extends JFrame {
 
             prefs.putBoolean("res_renamer_enabled", resourceRenamerCheck.isSelected());
             putSpinner("res_renamer_depth", resourceDepthSpinner);
+            prefs.put("res_renamer_chars", resourceCharsField.getText());
             prefs.put("res_renamer_exclude_ns", resourceExcludeNsField.getText());
             prefs.put("res_renamer_exclude_dirs", resourceExcludeDirsField.getText());
 
@@ -5015,7 +5011,6 @@ public final class NullfuscatorFrame extends JFrame {
             antiDebugRejectAgentsCheck.setSelected(prefs.getBoolean("anti_debug_reject_agents", antiDebugRejectAgentsCheck.isSelected()));
 
             fileCrasherCheck.setSelected(prefs.getBoolean("file_crasher_enabled", fileCrasherCheck.isSelected()));
-            runtimeIntegrityCheck.setSelected(prefs.getBoolean("runtime_integrity_enabled", runtimeIntegrityCheck.isSelected()));
             runtimeIntegrityIncludeField.setText(prefs.get("runtime_integrity_include", runtimeIntegrityIncludeField.getText()));
 
             bannerCheck.setSelected(prefs.getBoolean("banner_enabled", bannerCheck.isSelected()));
@@ -5112,6 +5107,7 @@ public final class NullfuscatorFrame extends JFrame {
 
             resourceRenamerCheck.setSelected(prefs.getBoolean("res_renamer_enabled", resourceRenamerCheck.isSelected()));
             getSpinner("res_renamer_depth", resourceDepthSpinner);
+            resourceCharsField.setText(prefs.get("res_renamer_chars", resourceCharsField.getText()));
             resourceExcludeNsField.setText(prefs.get("res_renamer_exclude_ns", resourceExcludeNsField.getText()));
             resourceExcludeDirsField.setText(prefs.get("res_renamer_exclude_dirs", resourceExcludeDirsField.getText()));
 
@@ -5138,5 +5134,154 @@ public final class NullfuscatorFrame extends JFrame {
         } catch (Exception ignored) {
         }
         updateAllToggles();
+    }
+
+    private void installTabSwitchAnimation(JTabbedPane tabbedPane) {
+        tabbedPane.addChangeListener(e -> {
+            Component selected = tabbedPane.getSelectedComponent();
+            if (!(selected instanceof JLayer<?> layer)) {
+                return;
+            }
+            final int[] overlayAlpha = {160};
+            javax.swing.plaf.LayerUI<JComponent> fadeUi = new javax.swing.plaf.LayerUI<>() {
+                @Override
+                public void paint(Graphics g, JComponent c) {
+                    super.paint(g, c);
+                    if (overlayAlpha[0] > 0) {
+                        Graphics2D g2 = (Graphics2D) g.create();
+                        g2.setColor(new Color(22, 22, 26, overlayAlpha[0]));
+                        g2.fillRect(0, 0, c.getWidth(), c.getHeight());
+                        g2.dispose();
+                    }
+                }
+            };
+            @SuppressWarnings("unchecked")
+            JLayer<JComponent> typedLayer = (JLayer<JComponent>) layer;
+            typedLayer.setUI(fadeUi);
+            javax.swing.Timer timer = new javax.swing.Timer(14, null);
+            timer.addActionListener(ev -> {
+                overlayAlpha[0] = Math.max(0, overlayAlpha[0] - 24);
+                typedLayer.repaint();
+                if (overlayAlpha[0] <= 0) {
+                    timer.stop();
+                    typedLayer.setUI(null);
+                }
+            });
+            timer.start();
+        });
+    }
+
+    private void installHoverColorAnimation(JButton button, Color normal, Color hover) {
+        final float[] progress = {0f};
+        final boolean[] hovered = {false};
+        javax.swing.Timer timer = new javax.swing.Timer(14, null);
+        timer.addActionListener(e -> {
+            progress[0] = hovered[0]
+                    ? Math.min(1.0f, progress[0] + 0.16f)
+                    : Math.max(0.0f, progress[0] - 0.16f);
+            int r = (int) (normal.getRed() + (hover.getRed() - normal.getRed()) * progress[0]);
+            int g = (int) (normal.getGreen() + (hover.getGreen() - normal.getGreen()) * progress[0]);
+            int b = (int) (normal.getBlue() + (hover.getBlue() - normal.getBlue()) * progress[0]);
+            button.setBackground(new Color(r, g, b));
+            if ((hovered[0] && progress[0] >= 1.0f) || (!hovered[0] && progress[0] <= 0.0f)) {
+                timer.stop();
+            }
+        });
+        button.addMouseListener(new java.awt.event.MouseAdapter() {
+            @Override
+            public void mouseEntered(java.awt.event.MouseEvent e) {
+                hovered[0] = true;
+                timer.start();
+            }
+
+            @Override
+            public void mouseExited(java.awt.event.MouseEvent e) {
+                hovered[0] = false;
+                timer.start();
+            }
+        });
+    }
+
+    private enum IconType {
+        SHIELD, FOLDER, FILTER, LAYERS, SLIDERS, ROTATE, INFO, PLAY
+    }
+
+    private static final class VectorIcon implements Icon {
+        private final IconType type;
+        private final int size;
+        private final Color color;
+
+        private VectorIcon(IconType type, int size, Color color) {
+            this.type = type;
+            this.size = size;
+            this.color = color;
+        }
+
+        @Override
+        public int getIconWidth() {
+            return size;
+        }
+
+        @Override
+        public int getIconHeight() {
+            return size;
+        }
+
+        @Override
+        public void paintIcon(Component c, Graphics g, int x, int y) {
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            g2.setRenderingHint(RenderingHints.KEY_STROKE_CONTROL, RenderingHints.VALUE_STROKE_PURE);
+            g2.setColor(color);
+            g2.setStroke(new BasicStroke(1.5f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+            g2.translate(x, y);
+            double s = size / 16.0;
+            g2.scale(s, s);
+            switch (type) {
+                case SHIELD -> {
+                    int[] px = {8, 13, 13, 8, 3, 3};
+                    int[] py = {2, 4, 8, 14, 8, 4};
+                    g2.drawPolygon(px, py, 6);
+                }
+                case FOLDER -> {
+                    g2.drawRoundRect(2, 4, 12, 9, 2, 2);
+                    g2.drawLine(2, 6, 7, 6);
+                    g2.drawLine(7, 6, 8, 4);
+                }
+                case FILTER -> {
+                    int[] px = {2, 14, 9, 9, 7, 7};
+                    int[] py = {3, 3, 8, 13, 12, 8};
+                    g2.drawPolygon(px, py, 6);
+                }
+                case LAYERS -> {
+                    g2.drawPolygon(new int[]{8, 14, 8, 2}, new int[]{2, 5, 8, 5}, 4);
+                    g2.drawPolyline(new int[]{2, 8, 14}, new int[]{8, 11, 8}, 3);
+                    g2.drawPolyline(new int[]{2, 8, 14}, new int[]{11, 14, 11}, 3);
+                }
+                case SLIDERS -> {
+                    g2.drawLine(3, 4, 13, 4);
+                    g2.drawLine(3, 8, 13, 8);
+                    g2.drawLine(3, 12, 13, 12);
+                    g2.fillOval(5, 2, 4, 4);
+                    g2.fillOval(9, 6, 4, 4);
+                    g2.fillOval(4, 10, 4, 4);
+                }
+                case ROTATE -> {
+                    g2.drawArc(3, 3, 10, 10, 45, 270);
+                    g2.drawPolyline(new int[]{10, 13, 13}, new int[]{3, 3, 6}, 3);
+                }
+                case INFO -> {
+                    g2.drawOval(2, 2, 12, 12);
+                    g2.drawLine(8, 7, 8, 11);
+                    g2.fillOval(7, 4, 2, 2);
+                }
+                case PLAY -> {
+                    int[] px = {4, 13, 4};
+                    int[] py = {3, 8, 13};
+                    g2.fillPolygon(px, py, 3);
+                }
+            }
+            g2.dispose();
+        }
     }
 }
